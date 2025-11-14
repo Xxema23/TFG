@@ -1,0 +1,4 @@
+piso-->
+php artisan serve --host=192.168.18.4
+cada-->
+php artisan serve --host=192.168.105.169
