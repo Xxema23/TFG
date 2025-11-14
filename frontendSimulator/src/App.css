@@ -1,0 +1,40 @@
+/* Reset global */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden !important;
+}
+
+/* Estilos específicos para contenedores */
+.App {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Evitar que los contenedores internos generen scroll */
+.overflow-hidden {
+  overflow: hidden !important;
+}
+
+/* Permitir scroll solo en componentes específicos donde sea necesario */
+.overflow-auto {
+  overflow: auto;
+  max-height: 100%;
+}
+
+/* Asegurarse de que los inputs y selectores no se corten */
+input, select, textarea {
+  max-width: 100%;
+}
+
+/* Asegurarse de que el contenido no se corte en la parte inferior */
+.flex-grow {
+  min-height: 0;
+}

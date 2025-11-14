@@ -1,0 +1,18 @@
+{
+  "workOrders": [
+    { "id": 1, "wo": "WO1", "line": "Línea 1", "hours": 3, "startDay": "2025-04-28", "materialStatus": "green", "fchAcuse": "2025-04-26", "fchObjetivo": "2025-04-28", "sequence": 1 },
+    { "id": 2, "wo": "WO2", "line": "Línea 1", "hours": 4, "startDay": "2025-04-28", "materialStatus": "yellow", "fchAcuse": "2025-04-27", "fchObjetivo": "2025-04-28", "sequence": 2 },
+   
+    { "id": 4, "wo": "WO4", "line": "Línea 1", "hours": 2, "startDay": "2025-04-28", "materialStatus": "green", "fchAcuse": "2025-04-26", "fchObjetivo": "2025-04-28", "sequence": 3 },
+   
+    { "id": 6, "wo": "WO6", "line": "Línea 1", "hours": 6, "startDay": "2025-04-28", "materialStatus": "red", "fchAcuse": "2025-04-27", "fchObjetivo": "2025-04-28", "sequence": 4 },
+    { "id": 7, "wo": "WO7", "line": "Línea 1", "hours": 8, "startDay": "2025-04-28", "materialStatus": "red", "fchAcuse": "2025-04-27", "fchObjetivo": "2025-04-28", "sequence": 5 },
+    { "id": 8, "wo": "WO8", "line": "Línea 1", "hours": 4, "startDay": "2025-04-29", "materialStatus": "green", "fchAcuse": "2025-04-26", "fchObjetivo": "2025-04-28", "sequence": 1 },
+    { "id": 9, "wo": "WO9", "line": "Línea 1", "hours": 2, "startDay": "2025-04-29", "materialStatus": "yellow", "fchAcuse": "2025-04-27", "fchObjetivo": "2025-04-28", "sequence": 2 },
+    { "id": 10, "wo": "WO10", "line": "Línea 1", "hours": 4, "startDay": "2025-04-29", "materialStatus": "", "fchAcuse": "", "fchObjetivo": "", "sequence": 3 },
+    { "id": 11, "wo": "WO11", "line": "Línea 1", "hours": 1, "startDay": "2025-04-29", "materialStatus": "red", "fchAcuse": "2025-04-27", "fchObjetivo": "2025-04-28", "sequence": 4 },
+    { "id": 11, "wo": "WO11", "line": "Línea 31", "hours": 6, "startDay": "2025-04-29", "materialStatus": "red", "fchAcuse": "2025-04-27", "fchObjetivo": "2025-04-28", "sequence": 4 }
+   
+  ]
+
+}
