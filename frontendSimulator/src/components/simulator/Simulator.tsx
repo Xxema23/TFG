@@ -104,7 +104,7 @@ const Simulator: React.FC = () => {
   const [activeScenario, setActiveScenario] = useState<number | null>(1);
   const [selectedWorkOrderIds, setSelectedWorkOrderIds] = useState<string[]>([]);
   
-  const DEFAULT_LINE = "S21";
+  const DEFAULT_LINE = "S21"; // ✅ Línea por defecto
   
   const [filterValues, setFilterValues] = useState<FilterValues>({
     linea: [DEFAULT_LINE],
@@ -136,12 +136,24 @@ const Simulator: React.FC = () => {
   } = UseSimulatorData();
 
   const fabricacionesFiltradas = useMemo(() => {
+    console.log('🔍 [fabricacionesFiltradas] Evaluando:', {
+      total: fabricaciones.length,
+      filterValues,
+      lastUpdated: lastUpdated?.toISOString()
+    });
+    
+    if (fabricaciones.length === 0) {
+      console.log('⚠️ No hay fabricaciones para filtrar');
+      return [];
+    }
+    
     const resultado = filterFabricaciones(fabricaciones, filterValues, defaultLineFilter);
     
     console.log('✅ Fabricaciones filtradas:', {
       total: fabricaciones.length,
       filtradas: resultado.length,
       lastUpdated: lastUpdated?.toISOString(),
+      lineasFiltradas: filterValues.linea,
       primeras3: resultado.slice(0, 3).map(f => ({
         NumWO: f.NumWO,
         Linea: f.Linea,
@@ -273,7 +285,7 @@ const Simulator: React.FC = () => {
       proveedor: [],
       fchObjetivo: null
     });
-  }, [defaultLineFilter]);
+  }, [defaultLineFilter, DEFAULT_LINE]);
 
   const handleDefaultLineChange = useCallback((line: string) => {
     if (typeof line === 'string' && line.trim() && setDefaultLineFilter) {
@@ -291,8 +303,20 @@ const Simulator: React.FC = () => {
     if (setDefaultLineFilter && fabricaciones.length > 0 && availableLines.length > 0) {
       const hasDefaultLine = availableLines.includes(DEFAULT_LINE);
       
+      console.log('🔧 Configurando línea por defecto:', {
+        DEFAULT_LINE,
+        hasDefaultLine,
+        availableLines: availableLines.slice(0, 5),
+        currentDefault: defaultLineFilter
+      });
+      
       if (hasDefaultLine) {
         setDefaultLineFilter(DEFAULT_LINE);
+        setFilterValues(prev => ({
+          ...prev,
+          linea: [DEFAULT_LINE]
+        }));
+        console.log(`✅ Línea por defecto configurada: ${DEFAULT_LINE}`);
       } else {
         const firstLine = availableLines[0];
         setDefaultLineFilter(firstLine);
@@ -300,9 +324,10 @@ const Simulator: React.FC = () => {
           ...prev,
           linea: [firstLine]
         }));
+        console.log(`⚠️ ${DEFAULT_LINE} no encontrada, usando primera línea: ${firstLine}`);
       }
     }
-  }, [fabricaciones.length, availableLines, setDefaultLineFilter]);
+  }, [fabricaciones.length, availableLines, setDefaultLineFilter, DEFAULT_LINE, defaultLineFilter]);
 
   if (isLoading) {
     return (
@@ -389,7 +414,12 @@ const Simulator: React.FC = () => {
   };
 
   const SafeDetailTablesPanel = () => {
-    console.log('🔑 [SafeDetailTablesPanel] Rendering con lastUpdated:', lastUpdated?.toISOString());
+    console.log('🔑 [SafeDetailTablesPanel] Rendering:', {
+      contextLength: fabricaciones.length,
+      filteredLength: fabricacionesFiltradas.length,
+      hasActiveFilters: hasActiveFilters,
+      lastUpdated: lastUpdated?.toISOString()
+    });
 
     const baseProps = {
       workOrders: [],
@@ -401,7 +431,7 @@ const Simulator: React.FC = () => {
       availableWOs: availableWOs,
       
       filteredFabrications: fabricacionesFiltradas,
-      useFilteredData: true,
+      useFilteredData: hasActiveFilters,
       defaultLineFilter: defaultLineFilter,
       lastUpdated: lastUpdated
     };

@@ -42,19 +42,51 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 
   const dataToUse = useMemo(() => {
     console.log('🔍 [dataToUse] Evaluando:', {
+      contextLength: fabricacionesFromContext.length,
       filteredLength: filteredFabrications.length,
+      hookLength: fabricacionesConHoras.length,
       useFilteredData,
+      defaultLineFilter,
       lastUpdated: lastUpdated?.toISOString()
     });
 
-    if (useFilteredData) {
-      console.log('✅ Usando filteredFabrications:', filteredFabrications.length);
+    // ✅ PRIORIDAD 1: Si hay filtros activos Y hay datos filtrados
+    if (useFilteredData && filteredFabrications.length > 0) {
+      console.log('✅ Usando filteredFabrications (filtros activos):', filteredFabrications.length);
       return filteredFabrications;
     }
 
+    // ✅ PRIORIDAD 2: Si hay filtros pero resultado vacío → filtrar contexto manualmente
+    if (useFilteredData && filteredFabrications.length === 0 && fabricacionesFromContext.length > 0) {
+      console.log('⚠️ Filtradas vacío, aplicando filtro de línea al contexto...');
+      
+      const contextFiltered = fabricacionesFromContext.filter(fab => {
+        if (defaultLineFilter && defaultLineFilter.trim()) {
+          return fab.Linea === defaultLineFilter;
+        }
+        return true;
+      });
+      
+      console.log(`✅ Contexto filtrado por línea ${defaultLineFilter}:`, contextFiltered.length);
+      return contextFiltered;
+    }
+
+    // ✅ PRIORIDAD 3: Si NO hay filtros → usar contexto completo
+    if (!useFilteredData && fabricacionesFromContext.length > 0) {
+      console.log('✅ Usando fabricacionesFromContext (sin filtros):', fabricacionesFromContext.length);
+      return fabricacionesFromContext;
+    }
+
+    // ✅ PRIORIDAD 4: Fallback a filtradas
+    if (filteredFabrications.length > 0) {
+      console.log('⚠️ Usando filteredFabrications (fallback):', filteredFabrications.length);
+      return filteredFabrications;
+    }
+
+    // ✅ PRIORIDAD 5: Hook (inicial)
     console.log('✅ Usando datos del hook:', fabricacionesConHoras.length);
     return fabricacionesConHoras;
-  }, [filteredFabrications, useFilteredData, fabricacionesConHoras, lastUpdated]);
+  }, [fabricacionesFromContext, filteredFabrications, useFilteredData, fabricacionesConHoras, lastUpdated, defaultLineFilter]);
 
   useEffect(() => {
     if (hasPendingChanges && dataToUse.length > 0) {
@@ -165,7 +197,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       contextLength: fabricacionesFromContext.length 
     });
 
-    // 1. Encontrar la WO target
     const targetFab = fabricacionesFromContext.find(f => f.NumWO === targetNumWO);
     if (!targetFab) {
       console.error('❌ Target no encontrado en contexto:', targetNumWO);
@@ -182,7 +213,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       Secuencia: targetFab.Secuencia
     });
 
-    // 2. Obtener las WOs arrastradas del contexto
     const draggedFabsOriginal = draggedNumWOs
       .map(numWO => fabricacionesFromContext.find(f => f.NumWO === numWO))
       .filter(Boolean);
@@ -197,7 +227,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       return;
     }
 
-    // 3. Cambiar fecha y línea de las WOs arrastradas
     const draggedFabsUpdated = draggedFabsOriginal.map(fab => ({
       ...fab!,
       Fch_Objetivo: targetDay,
@@ -206,7 +235,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 
     console.log('📅 Cambiando WOs arrastradas al día/línea:', targetDay, targetLine);
 
-    // 4. Obtener WOs existentes en el día/línea target (sin las arrastradas)
     const existingWosInTarget = fabricacionesFromContext
       .filter(f => 
         f.Fch_Objetivo === targetDay && 
@@ -217,7 +245,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 
     console.log('📦 WOs ya en día/línea target:', existingWosInTarget.map(w => `${w.NumWO}:${w.Secuencia}`));
 
-    // 5. Encontrar índice donde insertar
     const targetIdx = existingWosInTarget.findIndex(f => f.NumWO === targetNumWO);
     if (targetIdx === -1) {
       console.error('❌ Target no encontrado en WOs del día');
@@ -226,7 +253,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 
     console.log('📌 Insertando en índice:', targetIdx);
 
-    // 6. Insertar WOs arrastradas en la posición correcta
     const reordered = [
       ...existingWosInTarget.slice(0, targetIdx),
       ...draggedFabsUpdated,
@@ -237,7 +263,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 
     console.log('✅ Nuevas secuencias en día target:', resequencedTarget.map(f => `${f.NumWO}:${f.Secuencia}`));
 
-    // 7. Identificar días originales que necesitan reordenamiento
     const originalLocations = new Set<string>();
     draggedFabsOriginal.forEach(fab => {
       const originalDay = fab!.Fch_Objetivo;
@@ -249,25 +274,18 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 
     console.log('🔄 Días/líneas originales a reordenar:', Array.from(originalLocations));
 
-    // 8. ✅ CRÍTICO: Crear nuevo array removiendo TODAS las WOs involucradas
     let allFabs = fabricacionesFromContext.filter(f => {
-      // Remover las WOs arrastradas
       if (draggedNumWOs.includes(f.NumWO)) return false;
-      
-      // Remover TODAS las WOs que estaban en el día/línea target
       if (f.Fch_Objetivo === targetDay && f.Linea === targetLine) return false;
-      
       return true;
     });
 
     console.log('🗑️ Después de remover involucradas:', allFabs.length);
 
-    // 9. ✅ Agregar SOLO las WOs reordenadas del día target
     allFabs.push(...resequencedTarget);
 
     console.log('➕ Después de agregar reordenadas:', allFabs.length);
 
-    // 10. Reordenar secuencias en los días originales
     originalLocations.forEach(locationKey => {
       const [day, line] = locationKey.split("|");
       
@@ -285,7 +303,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       });
     });
 
-    // 11. Ordenar todas las fabricaciones por fecha y secuencia
     allFabs.sort((a, b) => {
       const dateCompare = new Date(a.Fch_Objetivo).getTime() - new Date(b.Fch_Objetivo).getTime();
       if (dateCompare !== 0) return dateCompare;
@@ -299,7 +316,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     console.log('📝 Actualizando contexto con', allFabs.length, 'fabricaciones ordenadas');
     console.log('   Primeras 5:', allFabs.slice(0, 5).map(f => `${f.NumWO}:${f.Fch_Objetivo}:${f.Secuencia}`));
 
-    // 12. Actualizar el contexto
     onGanttOrdersChanged(allFabs);
 
     console.log('✅ [REORDEN TABLE] Completado');

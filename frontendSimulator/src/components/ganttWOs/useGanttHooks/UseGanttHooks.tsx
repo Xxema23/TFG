@@ -10,38 +10,74 @@ import DropMonitor from "../DropMonitor";
 
 const DEFAULT_INITIAL_CAPACITY = 1000000;
 
-// ✅ FUNCIÓN CORREGIDA: Recalcular fechas basándose en capacidad
-const recalculateWorkOrderDates = (
+const getWeekNumber = (date: Date): number => {
+  const target = new Date(date.valueOf());
+  const dayNr = (date.getUTCDay() + 6) % 7;
+  target.setUTCDate(target.getUTCDate() - dayNr + 3);
+  const firstThursday = new Date(Date.UTC(target.getUTCFullYear(), 0, 4));
+  return 1 + Math.ceil((target.getTime() - firstThursday.getTime()) / 604800000);
+};
+
+const recalculateAffectedWorkOrders = (
   workOrders: IFabricacionConHoras[],
   capacity: any[],
-  workingDays: string[]
+  workingDays: string[],
+  affectedCapacities: CapacityData[]
 ): IFabricacionConHoras[] => {
-  if (!workOrders.length || !capacity.length || !workingDays.length) {
+  if (!workOrders.length || !capacity.length || !workingDays.length || !affectedCapacities.length) {
     return workOrders;
   }
 
-  console.log('🔄 [Recalcular Fechas] Inicio con', workOrders.length, 'WOs');
+  console.log('🎯 [Recalcular AFECTADAS] Capacidades modificadas:', affectedCapacities.length);
+  
+  const affectedLinesWeeks = new Set<string>();
+  affectedCapacities.forEach(cap => {
+    affectedLinesWeeks.add(`${cap.line}-${cap.week}-${cap.year}`);
+    console.log(`   📌 Línea ${cap.line}, Semana ${cap.week}, Año ${cap.year}`);
+  });
 
-  // Agrupar por línea
-  const wosByLine = new Map<string, IFabricacionConHoras[]>();
+  const affectedWOs: IFabricacionConHoras[] = [];
+  const unaffectedWOs: IFabricacionConHoras[] = [];
+
   workOrders.forEach(wo => {
+    const woDate = new Date(wo.Fch_Objetivo);
+    const woYear = woDate.getFullYear();
+    const woWeek = getWeekNumber(woDate);
+    const key = `${wo.Linea}-${woWeek}-${woYear}`;
+    
+    if (affectedLinesWeeks.has(key)) {
+      affectedWOs.push(wo);
+    } else {
+      unaffectedWOs.push(wo);
+    }
+  });
+
+  console.log(`   ✅ WOs afectadas: ${affectedWOs.length}, No afectadas: ${unaffectedWOs.length}`);
+
+  if (affectedWOs.length === 0) {
+    console.log('   ℹ️ No hay WOs en las semanas/líneas modificadas');
+    return workOrders;
+  }
+
+  const wosByLine = new Map<string, IFabricacionConHoras[]>();
+  affectedWOs.forEach(wo => {
     if (!wosByLine.has(wo.Linea)) {
       wosByLine.set(wo.Linea, []);
     }
     wosByLine.get(wo.Linea)!.push(wo);
   });
 
-  const updatedWorkOrders: IFabricacionConHoras[] = [];
+  const recalculatedWOs: IFabricacionConHoras[] = [];
 
   wosByLine.forEach((lineWOs, line) => {
-    // Crear mapa de capacidad por día
     const capacityByDay = new Map<string, number>();
     workingDays.forEach((day) => {
-      const customCapacity = capacity.find((cap) => cap.date === day && (cap.line === line || cap.line === "*"))?.capacity;
+      const customCapacity = capacity.find((cap) => 
+        cap.date === day && (cap.line === line || cap.line === "*")
+      )?.capacity;
       capacityByDay.set(day, customCapacity || DEFAULT_INITIAL_CAPACITY);
     });
 
-    // Ordenar WOs por fecha y secuencia
     const sortedWOs = [...lineWOs].sort((a, b) => {
       const dateA = new Date(a.Fch_Objetivo).getTime();
       const dateB = new Date(b.Fch_Objetivo).getTime();
@@ -49,7 +85,6 @@ const recalculateWorkOrderDates = (
       return a.Secuencia - b.Secuencia;
     });
 
-    // Rastrear uso de capacidad por día
     const dayUsage = new Map<string, number>();
     workingDays.forEach(day => dayUsage.set(day, 0));
 
@@ -57,14 +92,12 @@ const recalculateWorkOrderDates = (
       const originalDate = workOrder.Fch_Objetivo;
       const woHours = Math.max(parseFloat(workOrder.horas_totales_de_la_wo || "0"), 0.5);
       
-      // Buscar el día donde puede EMPEZAR esta WO
       let startDayIndex = workingDays.findIndex(d => d === originalDate);
       if (startDayIndex === -1) {
         startDayIndex = workingDays.findIndex(d => new Date(d) >= new Date(originalDate));
         if (startDayIndex === -1) startDayIndex = 0;
       }
 
-      // ✅ CRÍTICO: Buscar el primer día con AL MENOS ALGO de capacidad
       let actualStartDay = originalDate;
       let foundCapacity = false;
 
@@ -74,7 +107,6 @@ const recalculateWorkOrderDates = (
         const usedCapacity = dayUsage.get(currentDay) || 0;
         const availableCapacity = dailyCapacity - usedCapacity;
 
-        // Si hay AL MENOS algo de capacidad, la WO empieza aquí
         if (availableCapacity > 0) {
           actualStartDay = currentDay;
           foundCapacity = true;
@@ -82,12 +114,10 @@ const recalculateWorkOrderDates = (
         }
       }
 
-      // Si no encontramos capacidad en ningún día, dejamos la fecha original
       if (!foundCapacity) {
         actualStartDay = originalDate;
       }
 
-      // ✅ Ahora registrar el uso de capacidad de esta WO (puede ocupar múltiples días)
       let remainingHours = woHours;
       let currentDayIndex = workingDays.findIndex(d => d === actualStartDay);
 
@@ -112,16 +142,17 @@ const recalculateWorkOrderDates = (
       };
 
       if (actualStartDay !== originalDate) {
-        console.log(`   📅 WO ${workOrder.NumWO}: ${originalDate} → ${actualStartDay} (no cabía en día original)`);
+        console.log(`   📅 WO ${workOrder.NumWO}: ${originalDate} → ${actualStartDay}`);
       }
 
-      updatedWorkOrders.push(updatedWO);
+      recalculatedWOs.push(updatedWO);
     });
   });
 
-  // Reordenar secuencias por día/línea
+  const allWorkOrders = [...unaffectedWOs, ...recalculatedWOs];
+
   const wosByDayLine = new Map<string, IFabricacionConHoras[]>();
-  updatedWorkOrders.forEach(wo => {
+  allWorkOrders.forEach(wo => {
     const key = `${wo.Fch_Objetivo}|${wo.Linea}`;
     if (!wosByDayLine.has(key)) {
       wosByDayLine.set(key, []);
@@ -130,7 +161,7 @@ const recalculateWorkOrderDates = (
   });
 
   const finalWorkOrders: IFabricacionConHoras[] = [];
-  wosByDayLine.forEach((wos, key) => {
+  wosByDayLine.forEach((wos) => {
     const sorted = wos.sort((a, b) => a.Secuencia - b.Secuencia);
     const resequenced = sorted.map((wo, index) => ({
       ...wo,
@@ -139,7 +170,7 @@ const recalculateWorkOrderDates = (
     finalWorkOrders.push(...resequenced);
   });
 
-  console.log('✅ [Recalcular Fechas] Completado');
+  console.log('✅ [Recalcular AFECTADAS] Completado');
 
   return finalWorkOrders;
 };
@@ -183,6 +214,7 @@ export const useGanttHooks = () => {
   const dataRef = useRef<GanttData | null>(null);
   const workingDaysRef = useRef<string[]>([]);
   const isRecalculatingRef = useRef(false);
+  const lastSyncTimestampRef = useRef<number>(0);
 
   useEffect(() => {
     dataRef.current = data;
@@ -192,10 +224,22 @@ export const useGanttHooks = () => {
     workingDaysRef.current = workingDays;
   }, [workingDays]);
 
-  // ✅ Sincronizar cambios del contexto (desde Detalle Equipos) y aplicar recálculo de capacidad
   useEffect(() => {
-    if (fabricacionesFromContext.length > 0 && workingDays.length > 0 && !isRecalculatingRef.current) {
-      console.log('🔄 [useGanttHooks] Sincronizando desde contexto...');
+    if (isRecalculatingRef.current) {
+      console.log('⏸️ [useGanttHooks] Recalculando, skip sync');
+      return;
+    }
+
+    if (fabricacionesFromContext.length > 0 && workingDays.length > 0) {
+      const now = Date.now();
+      if (now - lastSyncTimestampRef.current < 100) {
+        console.log('⏸️ [useGanttHooks] Sync muy reciente, skip');
+        return;
+      }
+      
+      lastSyncTimestampRef.current = now;
+      
+      console.log('🔄 [useGanttHooks] Sincronizando desde contexto...', fabricacionesFromContext.length);
       
       const adjustedWorkOrders = fabricacionesFromContext.map((wo) => {
         const formattedDate = new Date(wo.Fch_Objetivo).toISOString().split("T")[0];
@@ -227,42 +271,13 @@ export const useGanttHooks = () => {
           };
         }
 
-        // ✅ CRÍTICO: SIEMPRE aplicar recálculo de capacidad
-        console.log('⚡ Aplicando recálculo de capacidad...');
-        isRecalculatingRef.current = true;
-        
-        const recalculatedWOs = recalculateWorkOrderDates(
-          adjustedWorkOrders,
-          prevData.capacity,
-          workingDays
-        );
-
-        // Actualizar el contexto con las fechas recalculadas SOLO si hay cambios
-        setTimeout(() => {
-          // Verificar si hubo cambios reales
-          const hasChanges = recalculatedWOs.some((wo, idx) => {
-            const original = adjustedWorkOrders.find(a => a.NumWO === wo.NumWO);
-            if (!original) return false;
-            return wo.Fch_Objetivo !== original.Fch_Objetivo || wo.Secuencia !== original.Secuencia;
-          });
-
-          if (hasChanges) {
-            console.log('📝 Hubo cambios en el recálculo, actualizando contexto');
-            onGanttOrdersChanged(recalculatedWOs);
-          } else {
-            console.log('✅ No hubo cambios en el recálculo');
-          }
-          
-          isRecalculatingRef.current = false;
-        }, 100);
-
         return {
           ...prevData,
-          workOrders: recalculatedWOs
+          workOrders: adjustedWorkOrders
         };
       });
     }
-  }, [fabricacionesFromContext, workingDays, setData, onGanttOrdersChanged, lastUpdated]);
+  }, [fabricacionesFromContext, workingDays, setData, lastUpdated]);
 
   const saveChanges = useCallback(async (): Promise<void> => {
     return Promise.resolve();
@@ -280,74 +295,156 @@ export const useGanttHooks = () => {
     setZoomLevel((prev) => Math.max(prev / 1.2, 0.5));
   }, []);
 
-  const stableHandleWorkOrderDrop = useCallback(
-    (info: DropInfo) => {
-      originalHandleWorkOrderDrop(info.day, info.line, info.insertBeforeWO, info.draggedItems);
+const stableHandleWorkOrderDrop = useCallback(
+  (info: DropInfo) => {
+    console.log('🎯 [useGanttHooks] Drag & Drop en Gantt');
+    console.log('   📊 Estado ANTES del drop:', {
+      workOrders: dataRef.current?.workOrders.length || 0,
+      capacity: dataRef.current?.capacity.length || 0,
+      workingDays: workingDaysRef.current.length
+    });
+    
+    originalHandleWorkOrderDrop(info.day, info.line, info.insertBeforeWO, info.draggedItems);
+    
+    setTimeout(() => {
+      console.log('   📊 Estado DESPUÉS del drop:', {
+        workOrders: dataRef.current?.workOrders.length || 0,
+        capacity: dataRef.current?.capacity.length || 0,
+        workingDays: workingDaysRef.current.length
+      });
       
-      setTimeout(() => {
-        if (dataRef.current) {
-          // ✅ Aplicar recálculo de capacidad después del drop en Gantt
-          isRecalculatingRef.current = true;
-          
-          const recalculatedWOs = recalculateWorkOrderDates(
-            dataRef.current.workOrders,
-            dataRef.current.capacity,
-            workingDaysRef.current
-          );
-
-          onGanttOrdersChanged(recalculatedWOs);
-          
-          setTimeout(() => {
-            isRecalculatingRef.current = false;
-          }, 100);
-        }
-      }, 200);
-    },
-    [originalHandleWorkOrderDrop, onGanttOrdersChanged]
-  );
-
-  const handleSaveCapacity = useCallback(
-    async (
-      capacities: CapacityData[], 
-      deletions: { line: string; week: number; year: number }[] = []
-    ): Promise<void> => {
-      try {
-        const result = await originalHandleSaveCapacity(capacities, deletions);
+      if (dataRef.current && dataRef.current.workOrders.length > 0) {
+        console.log('📢 [useGanttHooks] Recalculando después de drop en Gantt');
         
-        if (!result.success) {
-          return;
-        }
+        isRecalculatingRef.current = true;
         
-        if (result.capacityChanges && result.capacityChanges.length > 0) {
-          setTimeout(() => {
-            applyCapacityChanges(result.capacityChanges);
+        const affectedCapacities: CapacityData[] = [];
+        const draggedWOsData = info.draggedItems.map(numWO => 
+          dataRef.current!.workOrders.find(wo => wo.NumWO === numWO)
+        ).filter(Boolean);
+        
+        const targetDate = new Date(info.day);
+        const targetWeek = getWeekNumber(targetDate);
+        const targetYear = targetDate.getFullYear();
+        
+        affectedCapacities.push({
+          line: info.line,
+          week: targetWeek,
+          year: targetYear,
+          value: 0
+        });
+        
+        draggedWOsData.forEach(wo => {
+          if (wo) {
+            const originDate = new Date(wo.Fch_Objetivo);
+            const originWeek = getWeekNumber(originDate);
+            const originYear = originDate.getFullYear();
             
-            setTimeout(() => {
-              if (dataRef.current) {
-                isRecalculatingRef.current = true;
-                
-                const recalculatedWOs = recalculateWorkOrderDates(
-                  dataRef.current.workOrders,
-                  dataRef.current.capacity,
-                  workingDaysRef.current
-                );
-
-                onGanttOrdersChanged(recalculatedWOs);
-                
-                setTimeout(() => {
-                  isRecalculatingRef.current = false;
-                }, 100);
+            if (wo.Linea !== info.line || originWeek !== targetWeek || originYear !== targetYear) {
+              const alreadyAdded = affectedCapacities.some(
+                cap => cap.line === wo.Linea && cap.week === originWeek && cap.year === originYear
+              );
+              
+              if (!alreadyAdded) {
+                affectedCapacities.push({
+                  line: wo.Linea,
+                  week: originWeek,
+                  year: originYear,
+                  value: 0
+                });
               }
-            }, 200);
-          }, 100);
+            }
+          }
+        });
+        
+        console.log('🎯 Recalculando capacidad para días afectados:', affectedCapacities);
+        
+        const recalculatedWOs = recalculateAffectedWorkOrders(
+          dataRef.current.workOrders,
+          dataRef.current.capacity,
+          workingDaysRef.current,
+          affectedCapacities
+        );
+        
+        console.log('✅ Recalculadas:', recalculatedWOs.length, 'WOs');
+        
+        if (recalculatedWOs.length > 0) {
+          onGanttOrdersChanged(recalculatedWOs);
+        } else {
+          console.error('❌ recalculateAffectedWorkOrders devolvió 0 WOs');
         }
         
-      } catch (error) {
-        throw error;
+        setTimeout(() => {
+          isRecalculatingRef.current = false;
+        }, 100);
+      } else {
+        console.error('❌ dataRef.current está vacío o no tiene workOrders');
       }
-    },
-    [originalHandleSaveCapacity, applyCapacityChanges, onGanttOrdersChanged]
-  );
+    }, 200);
+  },
+  [originalHandleWorkOrderDrop, onGanttOrdersChanged]
+);
+
+const handleSaveCapacity = useCallback(
+  async (
+    capacities: CapacityData[], 
+    deletions: { line: string; week: number; year: number }[] = []
+  ): Promise<void> => {
+    try {
+      console.log('💾 [useGanttHooks] Guardando capacidad:', capacities);
+      
+      const result = await originalHandleSaveCapacity(capacities, deletions);
+      
+      if (!result.success) {
+        return;
+      }
+      
+      if (result.capacityChanges && result.capacityChanges.length > 0) {
+        setTimeout(() => {
+          applyCapacityChanges(result.capacityChanges);
+          
+          setTimeout(() => {
+            if (dataRef.current) {
+              console.log('📢 [useGanttHooks] Recalculando SOLO WOs afectadas por capacidad');
+              console.log('   Datos actuales:', {
+                workOrders: dataRef.current.workOrders.length,
+                capacity: dataRef.current.capacity.length,
+                workingDays: workingDaysRef.current.length
+              });
+              
+              isRecalculatingRef.current = true;
+              
+              const recalculatedWOs = recalculateAffectedWorkOrders(
+                dataRef.current.workOrders,
+                dataRef.current.capacity,
+                workingDaysRef.current,
+                result.capacityChanges
+              );
+
+              // ✅ CRÍTICO: Solo actualizar si hay WOs recalculadas
+              if (recalculatedWOs.length > 0) {
+                console.log(`✅ Actualizando con ${recalculatedWOs.length} WOs recalculadas`);
+                onGanttOrdersChanged(recalculatedWOs, true);
+              } else {
+                console.error('❌ recalculateAffectedWorkOrders devolvió 0 WOs, NO actualizando contexto');
+                console.error('   Esto es un BUG - debería devolver al menos las WOs no afectadas');
+              }
+              
+              setTimeout(() => {
+                isRecalculatingRef.current = false;
+              }, 100);
+            }
+          }, 200);
+        }, 100);
+      }
+      
+    } catch (error) {
+      console.error('❌ [useGanttHooks] Error guardando capacidad:', error);
+      throw error;
+    }
+  },
+  [originalHandleSaveCapacity, applyCapacityChanges, onGanttOrdersChanged]
+);
 
   useEffect(() => {
     DropMonitor.registerDropHandler(stableHandleWorkOrderDrop);
