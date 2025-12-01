@@ -104,7 +104,7 @@ const Simulator: React.FC = () => {
   const [activeScenario, setActiveScenario] = useState<number | null>(1);
   const [selectedWorkOrderIds, setSelectedWorkOrderIds] = useState<string[]>([]);
   
-  const DEFAULT_LINE = "S21"; // ✅ Línea por defecto
+  const DEFAULT_LINE = "S21";
   
   const [filterValues, setFilterValues] = useState<FilterValues>({
     linea: [DEFAULT_LINE],
@@ -120,6 +120,9 @@ const Simulator: React.FC = () => {
 
   const [ganttWorkOrders, setGanttWorkOrders] = useState<IFabricacionConHoras[]>([]);
   const [ganttDataLoaded, setGanttDataLoaded] = useState(false);
+  
+  // 🆕 CRÍTICO: Forzar re-render con un contador
+  const [updateCounter, setUpdateCounter] = useState(0);
 
   const filterValuesRef = useRef(filterValues);
   filterValuesRef.current = filterValues;
@@ -135,11 +138,14 @@ const Simulator: React.FC = () => {
     setDefaultLineFilter
   } = UseSimulatorData();
 
+  // 🆕 SOLUCIÓN: Usar fabricaciones directamente del contexto
+  // y forzar actualización cuando lastUpdated cambie
   const fabricacionesFiltradas = useMemo(() => {
     console.log('🔍 [fabricacionesFiltradas] Evaluando:', {
       total: fabricaciones.length,
       filterValues,
-      lastUpdated: lastUpdated?.toISOString()
+      lastUpdated: lastUpdated?.toISOString(),
+      updateCounter
     });
     
     if (fabricaciones.length === 0) {
@@ -154,16 +160,29 @@ const Simulator: React.FC = () => {
       filtradas: resultado.length,
       lastUpdated: lastUpdated?.toISOString(),
       lineasFiltradas: filterValues.linea,
-      primeras3: resultado.slice(0, 3).map(f => ({
+      primeras10: resultado.slice(0, 10).map(f => ({
         NumWO: f.NumWO,
         Linea: f.Linea,
         Fch: f.Fch_Objetivo,
         Seq: f.Secuencia
-      }))
+      })),
+      distribucionPorFecha: resultado.reduce((acc, f) => {
+        const fecha = f.Fch_Objetivo?.split('T')[0] || f.Fch_Objetivo;
+        acc[fecha] = (acc[fecha] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>)
     });
     
     return resultado;
-  }, [fabricaciones, filterValues, defaultLineFilter, lastUpdated]);
+  }, [fabricaciones, filterValues, defaultLineFilter, lastUpdated, updateCounter]);
+
+  // 🆕 CRÍTICO: Escuchar cambios en lastUpdated y forzar re-render
+  useEffect(() => {
+    if (lastUpdated) {
+      console.log('🔄 [Simulator] lastUpdated cambió, forzando actualización:', lastUpdated.toISOString());
+      setUpdateCounter(prev => prev + 1);
+    }
+  }, [lastUpdated]);
 
   const hasActiveFilters = useMemo(() => {
     if (!filterValues || typeof filterValues !== 'object') return false;
@@ -418,7 +437,8 @@ const Simulator: React.FC = () => {
       contextLength: fabricaciones.length,
       filteredLength: fabricacionesFiltradas.length,
       hasActiveFilters: hasActiveFilters,
-      lastUpdated: lastUpdated?.toISOString()
+      lastUpdated: lastUpdated?.toISOString(),
+      updateCounter
     });
 
     const baseProps = {

@@ -107,7 +107,16 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
   }, []);
 
   const onGanttOrdersChanged = useCallback((reorderedOrders: IFabricacionConHoras[], fromCapacity = false) => {
-    console.log('🔄 [FabricacionesContext] Gantt notifica cambio de órdenes:', reorderedOrders.length, fromCapacity ? '(desde capacidad)' : '');
+    console.log('🔄 [FabricacionesContext] Gantt notifica cambio de órdenes:', {
+      totalWOs: reorderedOrders.length,
+      fromCapacity,
+      primerasWOs: reorderedOrders.slice(0, 3).map(w => ({
+        NumWO: w.NumWO,
+        Fecha: w.Fch_Objetivo,
+        Linea: w.Linea,
+        Seq: w.Secuencia
+      }))
+    });
     
     setFabricaciones(reorderedOrders);
     setLastUpdated(new Date());

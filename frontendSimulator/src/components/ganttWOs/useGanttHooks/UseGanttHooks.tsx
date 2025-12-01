@@ -24,7 +24,26 @@ const recalculateAffectedWorkOrders = (
   workingDays: string[],
   affectedCapacities: CapacityData[]
 ): IFabricacionConHoras[] => {
+  console.log('🎯 [Recalcular AFECTADAS] INICIO:', {
+    totalWOsEntrada: workOrders.length,
+    capacityLength: capacity.length,
+    workingDaysLength: workingDays.length,
+    affectedCapacitiesLength: affectedCapacities.length,
+    primerasWOs: workOrders.slice(0, 3).map(w => ({
+      NumWO: w.NumWO,
+      Fecha: w.Fch_Objetivo,
+      Linea: w.Linea,
+      Seq: w.Secuencia
+    }))
+  });
+
   if (!workOrders.length || !capacity.length || !workingDays.length || !affectedCapacities.length) {
+    console.warn('⚠️ [Recalcular AFECTADAS] Faltan datos, devolviendo workOrders originales:', {
+      workOrders: workOrders.length,
+      capacity: capacity.length,
+      workingDays: workingDays.length,
+      affectedCapacities: affectedCapacities.length
+    });
     return workOrders;
   }
 
@@ -53,9 +72,10 @@ const recalculateAffectedWorkOrders = (
   });
 
   console.log(`   ✅ WOs afectadas: ${affectedWOs.length}, No afectadas: ${unaffectedWOs.length}`);
+  console.log(`   📊 VERIFICACIÓN: ${affectedWOs.length} + ${unaffectedWOs.length} = ${affectedWOs.length + unaffectedWOs.length} (debe ser ${workOrders.length})`);
 
   if (affectedWOs.length === 0) {
-    console.log('   ℹ️ No hay WOs en las semanas/líneas modificadas');
+    console.log('   ℹ️ No hay WOs en las semanas/líneas modificadas, devolviendo todas sin cambios');
     return workOrders;
   }
 
@@ -70,6 +90,8 @@ const recalculateAffectedWorkOrders = (
   const recalculatedWOs: IFabricacionConHoras[] = [];
 
   wosByLine.forEach((lineWOs, line) => {
+    console.log(`   🔧 Procesando línea ${line}: ${lineWOs.length} WOs`);
+    
     const capacityByDay = new Map<string, number>();
     workingDays.forEach((day) => {
       const customCapacity = capacity.find((cap) => 
@@ -166,8 +188,6 @@ const recalculateAffectedWorkOrders = (
     });
 
     // ✅ Para cada día, ordenar WOs:
-    // 1. Primero las que YA estaban en ese día (por secuencia original)
-    // 2. Luego las que se movieron a ese día (por fecha original, para que las más antiguas vayan primero)
     wosByDay.forEach((wos, day) => {
       const alreadyInDay = wos.filter(wo => {
         const originalInSorted = sortedWOs.find(s => s.NumWO === wo.NumWO);
@@ -178,14 +198,13 @@ const recalculateAffectedWorkOrders = (
         const originalInSorted = sortedWOs.find(s => s.NumWO === wo.NumWO);
         return originalInSorted?.Fch_Objetivo !== day;
       }).sort((a, b) => {
-        // Ordenar los movidos por su fecha ORIGINAL (más antigua primero)
         const originalA = sortedWOs.find(s => s.NumWO === a.NumWO);
         const originalB = sortedWOs.find(s => s.NumWO === b.NumWO);
         if (!originalA || !originalB) return 0;
         return new Date(originalA.Fch_Objetivo).getTime() - new Date(originalB.Fch_Objetivo).getTime();
       });
 
-      // ✅ CRÍTICO: Los movidos van PRIMERO (son los que no cupieron antes)
+      // ✅ CRÍTICO: Los movidos van PRIMERO
       const orderedWOs = [...movedToDay, ...alreadyInDay];
       
       const resequenced = orderedWOs.map((wo, index) => ({
@@ -200,11 +219,46 @@ const recalculateAffectedWorkOrders = (
     wosByDay.forEach(wos => {
       recalculatedWOs.push(...wos);
     });
+    
+    console.log(`   ✅ Línea ${line} procesada: ${recalculatedWOs.length} WOs en resultado parcial`);
   });
 
   const allWorkOrders = [...unaffectedWOs, ...recalculatedWOs];
 
-  console.log('✅ [Recalcular AFECTADAS] Completado');
+  console.log('✅ [Recalcular AFECTADAS] Completado:', {
+    totalSalida: allWorkOrders.length,
+    unaffected: unaffectedWOs.length,
+    recalculated: recalculatedWOs.length,
+    verificacion: `${unaffectedWOs.length} + ${recalculatedWOs.length} = ${allWorkOrders.length}`,
+    primerasWOsSalida: allWorkOrders.slice(0, 3).map(w => ({
+      NumWO: w.NumWO,
+      Fecha: w.Fch_Objetivo,
+      Linea: w.Linea,
+      Seq: w.Secuencia
+    }))
+  });
+
+  // 🆕 VERIFICACIÓN CRÍTICA: Asegurar que NO perdimos WOs
+  if (allWorkOrders.length !== workOrders.length) {
+    console.error('❌❌❌ CRÍTICO: SE PERDIERON WOs EN EL RECÁLCULO!', {
+      entrada: workOrders.length,
+      salida: allWorkOrders.length,
+      diferencia: workOrders.length - allWorkOrders.length,
+      wosOriginales: workOrders.map(w => w.NumWO).sort(),
+      wosSalida: allWorkOrders.map(w => w.NumWO).sort()
+    });
+    
+    // Encontrar qué WOs se perdieron
+    const originalNumWOs = new Set(workOrders.map(w => w.NumWO));
+    const resultNumWOs = new Set(allWorkOrders.map(w => w.NumWO));
+    const perdidas = [...originalNumWOs].filter(numWO => !resultNumWOs.has(numWO));
+    
+    console.error('❌ WOs PERDIDAS:', perdidas);
+    
+    // 🚨 CRÍTICO: Si perdimos WOs, devolver las originales sin cambios
+    console.error('🚨 DEVOLVIENDO WOs ORIGINALES PARA EVITAR PÉRDIDA DE DATOS');
+    return workOrders;
+  }
 
   return allWorkOrders;
 };
@@ -402,10 +456,16 @@ export const useGanttHooks = () => {
           
           console.log('✅ Recalculadas:', recalculatedWOs.length, 'WOs');
           
-          if (recalculatedWOs.length > 0) {
+          // 🆕 VERIFICACIÓN ADICIONAL antes de actualizar contexto
+          if (recalculatedWOs.length === dataRef.current.workOrders.length) {
+            console.log('✅ Verificación OK: Mismo número de WOs, actualizando contexto');
             onGanttOrdersChanged(recalculatedWOs);
           } else {
-            console.error('❌ recalculateAffectedWorkOrders devolvió 0 WOs');
+            console.error('❌ ERROR: Número de WOs no coincide!', {
+              antes: dataRef.current.workOrders.length,
+              despues: recalculatedWOs.length
+            });
+            console.error('🚨 NO ACTUALIZANDO CONTEXTO para evitar pérdida de datos');
           }
           
           setTimeout(() => {
@@ -455,13 +515,16 @@ export const useGanttHooks = () => {
                   result.capacityChanges
                 );
 
-                // ✅ CRÍTICO: Solo actualizar si hay WOs recalculadas
-                if (recalculatedWOs.length > 0) {
-                  console.log(`✅ Actualizando con ${recalculatedWOs.length} WOs recalculadas`);
+                // 🆕 VERIFICACIÓN antes de actualizar
+                if (recalculatedWOs.length === dataRef.current.workOrders.length) {
+                  console.log(`✅ Verificación OK: Actualizando con ${recalculatedWOs.length} WOs recalculadas`);
                   onGanttOrdersChanged(recalculatedWOs, true);
                 } else {
-                  console.error('❌ recalculateAffectedWorkOrders devolvió 0 WOs, NO actualizando contexto');
-                  console.error('   Esto es un BUG - debería devolver al menos las WOs no afectadas');
+                  console.error('❌ ERROR: recalculateAffectedWorkOrders cambió el número de WOs', {
+                    antes: dataRef.current.workOrders.length,
+                    despues: recalculatedWOs.length
+                  });
+                  console.error('🚨 NO actualizando contexto para evitar pérdida de datos');
                 }
                 
                 setTimeout(() => {

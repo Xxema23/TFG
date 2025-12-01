@@ -228,7 +228,6 @@ export const EquipmentTable: React.FC<EquipmentTableProps> = ({
   const [newDate, setNewDate] = useState('');
   const [isUpdating, setIsUpdating] = useState<Set<string>>(new Set());
 
-  // ✅ CREAR workOrdersMap DIRECTAMENTE desde workOrders (sin estado intermedio)
   const workOrdersMap = useMemo(() => {
     const map: Record<string, WorkOrder> = {};
     
@@ -377,6 +376,30 @@ export const EquipmentTable: React.FC<EquipmentTableProps> = ({
     );
   }
 
+  // 🆕 LOG CRÍTICO: Ver todas las fechas que se van a renderizar
+  console.log('📋 [EquipmentTable] Análisis COMPLETO antes de renderizar:', {
+    filteredWOIds: filteredWOIds.length,
+    workOrders: workOrders.length,
+    todasLasFechas: Array.from(new Set(workOrders.map(w => w.fchObjetivo?.split('T')[0] || w.fchObjetivo))).sort(),
+    distribucionPorFecha: workOrders.reduce((acc, w) => {
+      const fecha = w.fchObjetivo?.split('T')[0] || w.fchObjetivo;
+      acc[fecha] = (acc[fecha] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>),
+    primerasFechas: workOrders.slice(0, 5).map(w => ({
+      NumWO: w.numWO,
+      Fecha: w.fchObjetivo,
+      Seq: w.secuencia
+    })),
+    ultimasFechas: workOrders.slice(-5).map(w => ({
+      NumWO: w.numWO,
+      Fecha: w.fchObjetivo,
+      Seq: w.secuencia
+    })),
+    buscarWO25052658: workOrders.find(w => w.numWO === '25052658'),
+    buscarWO25033630: workOrders.find(w => w.numWO === '25033630')
+  });
+
   return (
     <div className="overflow-y-auto overflow-x-auto h-[calc(100%-36px)]">
       <table
@@ -463,4 +486,4 @@ export const EquipmentTable: React.FC<EquipmentTableProps> = ({
   );
 };
 
-export default EquipmentTable; 
+export default EquipmentTable;

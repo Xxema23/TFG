@@ -103,7 +103,28 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       return [];
     }
 
-    const enriched = dataToUse.map((fab, index) => ({
+    // ✅ PRIMERO: Ordenar dataToUse por fecha y secuencia
+    const sortedData = [...dataToUse].sort((a, b) => {
+      // Ordenar por fecha (más antigua primero)
+      const dateA = new Date(a.Fch_Objetivo).getTime();
+      const dateB = new Date(b.Fch_Objetivo).getTime();
+      
+      if (dateA !== dateB) {
+        return dateA - dateB;
+      }
+      
+      // Si misma fecha, ordenar por línea
+      const lineCompare = (a.Linea || '').localeCompare(b.Linea || '');
+      if (lineCompare !== 0) {
+        return lineCompare;
+      }
+      
+      // Si misma línea, ordenar por secuencia
+      return (a.Secuencia || 0) - (b.Secuencia || 0);
+    });
+
+    // ✅ LUEGO: Crear enriched desde datos ordenados
+    const enriched = sortedData.map((fab, index) => ({
       id: `wo_${index}`,
       numWO: fab.NumWO || '',
       equipo: fab.Equipo || '',
@@ -126,15 +147,20 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       _originalData: fab
     }));
 
-    console.log('📊 [enrichedWorkOrders] Creados:', {
+    console.log('📊 [enrichedWorkOrders] Creados y ORDENADOS:', {
       total: enriched.length,
-      primeros3: enriched.slice(0, 3).map(w => ({ 
+      primeros10: enriched.slice(0, 10).map(w => ({ 
         id: w.id, 
         numWO: w.numWO, 
         linea: w.linea, 
         seq: w.secuencia,
         fecha: w.fchObjetivo 
-      }))
+      })),
+      distribucionPorFecha: enriched.reduce((acc, w) => {
+        const fecha = w.fchObjetivo?.split('T')[0] || w.fchObjetivo;
+        acc[fecha] = (acc[fecha] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>)
     });
     
     return enriched;
