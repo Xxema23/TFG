@@ -9,6 +9,10 @@ import { useResizablePanels } from './hooks/useResizablePanels';
 import UseRowSelection from './hooks/useRowSelection';
 import UseTableSync from './hooks/useTableSync';
 import { useFabricacionesContext } from '../../../contexts/FabricacionesContext';
+// 🆕 Imports para aplicar capacidad
+import { recalculateAffectedWorkOrders, getWeekNumber, DEFAULT_INITIAL_CAPACITY } from '../../ganttWOs/useGanttHooks/UseGanttHooks';
+import { CapacityData } from '../../../interfaces/Capacity';
+import { getCapacities } from '../../../services/CapacityService';
 
 const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date }> = ({
   workOrders = [],
@@ -25,6 +29,11 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 }) => {
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const [lastModifiedDay, setLastModifiedDay] = useState<string | null>(null);
+  
+  // 🆕 Estado para capacity (para aplicar restricciones en drag & drop)
+  const [capacity, setCapacity] = useState<any[]>([]);
+  const [workingDays, setWorkingDays] = useState<string[]>([]);
+  const [capacityLoaded, setCapacityLoaded] = useState(false);
 
   const {
     fabricaciones: fabricacionesFromContext,
@@ -96,6 +105,182 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       setLastModifiedDay(sortedByDate[0]?.Fch_Objetivo || null);
     }
   }, [hasPendingChanges, dataToUse]);
+
+  // 🆕 Cargar capacity y workingDays para aplicar restricciones
+  useEffect(() => {
+    const convertWeeklyToDaily = (
+      weeklyCapacities: CapacityData[], 
+      workingDaysArray: string[]
+    ): any[] => {
+      const dailyCapacities: any[] = [];
+      const capacityMap = new Map<string, number>();
+
+      // Mapear capacidades semanales
+      weeklyCapacities.forEach(capacity => {
+        const key = `${capacity.line}-${capacity.week}-${capacity.year}`;
+        capacityMap.set(key, capacity.value);
+      });
+
+      // Obtener todas las líneas únicas
+      const allLines = Array.from(new Set([
+        ...weeklyCapacities.map(c => c.line),
+        ...fabricacionesFromContext.map(wo => wo.Linea)
+      ]));
+
+      // Generar capacidades diarias SOLO para días laborables (lun-vie)
+      workingDaysArray.forEach(day => {
+        // 🆕 CRÍTICO: Usar fecha local en lugar de UTC para evitar problemas de zona horaria
+        const [year, month, dayNum] = day.split('-').map(Number);
+        const date = new Date(year, month - 1, dayNum); // Fecha local
+        const dayOfWeek = date.getDay();
+        
+        // 🆕 CRÍTICO: Excluir sábados (6) y domingos (0)
+        if (dayOfWeek === 0 || dayOfWeek === 6) {
+          console.warn(`⚠️ [convertWeeklyToDaily] Día ${day} es fin de semana (dow=${dayOfWeek}), OMITIDO`);
+          return; // Skip este día
+        }
+        
+        const week = getWeekNumber(date);
+
+        allLines.forEach(line => {
+          const key = `${line}-${week}-${year}`;
+          const weeklyCapacity = capacityMap.get(key);
+          
+          const dailyCapacity = weeklyCapacity !== undefined 
+            ? weeklyCapacity 
+            : DEFAULT_INITIAL_CAPACITY;
+
+          dailyCapacities.push({
+            line,
+            date: day, // ✅ Mantener formato original (sin 00:00:00)
+            capacity: dailyCapacity
+          });
+        });
+      });
+
+      return dailyCapacities;
+    };
+
+    const generateCompleteWorkingDays = (fabricaciones: any[]): string[] => {
+      console.log('🚀🚀🚀 [generateCompleteWorkingDays] INICIO - Fabricaciones:', fabricaciones.length);
+      
+      if (fabricaciones.length === 0) {
+        console.log('❌ [generateCompleteWorkingDays] Sin fabricaciones, retornando []');
+        return [];
+      }
+
+      // ✅ Obtener rango de fechas (min y max)
+      const dates = fabricaciones
+        .map(fab => new Date(fab.Fch_Objetivo))
+        .filter(date => !isNaN(date.getTime()));
+
+      console.log('📅 [generateCompleteWorkingDays] Fechas válidas extraídas:', dates.length);
+
+      if (dates.length === 0) {
+        console.log('❌ [generateCompleteWorkingDays] Sin fechas válidas, retornando []');
+        return [];
+      }
+
+      const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
+      const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
+      
+      // 🆕 Añadir margen de 4 semanas DESPUÉS para capacity redistribution
+      maxDate.setDate(maxDate.getDate() + 28);
+
+      console.log('📊 [generateCompleteWorkingDays] Rango de fechas:', {
+        min: minDate.toISOString().split('T')[0],
+        max: maxDate.toISOString().split('T')[0]
+      });
+
+      // ✅ Generar TODOS los días laborables entre min y max (lun-vie)
+      const allWorkingDays: string[] = [];
+      const currentDate = new Date(minDate);
+
+      while (currentDate <= maxDate) {
+        const dayOfWeek = currentDate.getDay();
+        
+        // ✅ Incluir solo días laborables (lun=1, mar=2, mié=3, jue=4, vie=5)
+        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+          // ✅ Formato local: YYYY-MM-DD (evitar problemas de UTC)
+          const year = currentDate.getFullYear();
+          const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+          const day = String(currentDate.getDate()).padStart(2, '0');
+          const dateStr = `${year}-${month}-${day}`;
+          allWorkingDays.push(dateStr);
+        }
+
+        // Avanzar al siguiente día
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      console.log('✅✅✅ [generateCompleteWorkingDays] COMPLETADO:', {
+        total: allWorkingDays.length,
+        desde: allWorkingDays[0],
+        hasta: allWorkingDays[allWorkingDays.length - 1],
+        primeros20: allWorkingDays.slice(0, 20)
+      });
+
+      return allWorkingDays;
+    };
+
+    const loadCapacityData = async () => {
+      try {
+        console.log('🔄 [DetailTablesPanel] Cargando capacity...');
+        
+        if (fabricacionesFromContext.length > 0) {
+          console.log('🎯 [loadCapacityData] Llamando a generateCompleteWorkingDays con', fabricacionesFromContext.length, 'fabricaciones');
+          
+          // ✅ Generar working days COMPLETO (todos los días laborables)
+          const sortedDays = generateCompleteWorkingDays(fabricacionesFromContext);
+          
+          console.log('🎯 [loadCapacityData] generateCompleteWorkingDays retornó:', sortedDays.length, 'días');
+          console.log('🎯 [loadCapacityData] Primeros 20 días:', sortedDays.slice(0, 20));
+          
+          setWorkingDays(sortedDays);
+          
+          // Cargar capacidades semanales desde el servicio
+          const currentYear = new Date().getFullYear();
+          const weeklyCapacities = await getCapacities(1, currentYear);
+          
+          console.log('📊 [DetailTablesPanel] Capacidades semanales cargadas:', weeklyCapacities.length);
+          
+          // Convertir capacidades semanales a diarias
+          const dailyCapacities = convertWeeklyToDaily(weeklyCapacities, sortedDays);
+          
+          setCapacity(dailyCapacities);
+          console.log('✅ [DetailTablesPanel] Capacity diaria generada:', dailyCapacities.length, 'entradas');
+          
+          // 🔍 DEBUG: Ver capacities de S21
+          const s21Capacities = dailyCapacities.filter(c => c.line === 'S21');
+          console.log('🔍 [DEBUG] TODAS las capacities de S21:', s21Capacities.length, 'días');
+          s21Capacities.forEach((c, i) => {
+            console.log(`   ${i}: ${c.date} → ${c.capacity} horas`);
+          });
+
+          const uniqueDatesS21 = [...new Set(s21Capacities.map(c => c.date))].sort();
+          console.log('📅 [DEBUG] Días únicos con capacity S21:', uniqueDatesS21);
+        }
+        
+        setCapacityLoaded(true);
+      } catch (error) {
+        console.error('❌ [DetailTablesPanel] Error cargando capacity:', error);
+        setCapacityLoaded(false);
+      }
+    };
+
+    if (fabricacionesFromContext.length > 0 && !capacityLoaded) {
+      loadCapacityData();
+    }
+  }, [fabricacionesFromContext.length, capacityLoaded]);
+
+  // 🆕 SOLUCIÓN SIMPLE: Permitir recarga manual de capacity
+  // Si capacityLoaded es true pero capacity está vacía, resetear para recargar
+  useEffect(() => {
+    if (capacityLoaded && capacity.length === 0 && fabricacionesFromContext.length > 0) {
+      console.log('⚠️ [DetailTablesPanel] Capacity vacía detectada, permitiendo recarga...');
+      setCapacityLoaded(false);
+    }
+  }, [capacityLoaded, capacity.length, fabricacionesFromContext.length]);
 
   const enrichedWorkOrders = useMemo(() => {
     if (!dataToUse.length) {
@@ -220,7 +405,10 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     console.log('🔄 [REORDEN TABLE] Inicio:', { 
       draggedNumWOs, 
       targetNumWO,
-      contextLength: fabricacionesFromContext.length 
+      contextLength: fabricacionesFromContext.length,
+      capacityLoaded,
+      capacityLength: capacity.length,
+      workingDaysLength: workingDays.length
     });
 
     const targetFab = fabricacionesFromContext.find(f => f.NumWO === targetNumWO);
@@ -329,7 +517,176 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       });
     });
 
-    allFabs.sort((a, b) => {
+    // 🆕 APLICAR CAPACITY RESPETANDO ORDEN MANUAL
+    let finalFabs = allFabs;
+    
+    if (capacityLoaded && capacity.length > 0 && workingDays.length > 0) {
+      console.log('🎯 [REORDEN TABLE] Aplicando CAPACITY (respetando orden manual)...');
+      
+      // 🆕 SOLO redistribuir desde el día del drop en adelante
+      const dropDate = targetDay.split('T')[0]; // Día donde se soltó la WO
+      
+      console.log('📍 [REORDEN TABLE] Día del drop:', dropDate);
+      
+      // 🆕 Obtener WOs de la línea desde el día del drop en adelante
+      const wosToRedistribute = allFabs
+        .filter(wo => {
+          if (wo.Linea !== targetLine) return false;
+          const woDate = wo.Fch_Objetivo.split('T')[0];
+          return woDate >= dropDate; // Solo desde el día del drop en adelante
+        })
+        .sort((a, b) => {
+          const dateCompare = new Date(a.Fch_Objetivo).getTime() - new Date(b.Fch_Objetivo).getTime();
+          if (dateCompare !== 0) return dateCompare;
+          return a.Secuencia - b.Secuencia;
+        });
+      
+      // 🆕 Obtener WOs ANTERIORES al drop que NO se tocarán
+      const wosBeforeDrop = allFabs.filter(wo => {
+        if (wo.Linea !== targetLine) return true; // Otras líneas no se tocan
+        const woDate = wo.Fch_Objetivo.split('T')[0];
+        return woDate < dropDate; // Anteriores al drop no se tocan
+      });
+      
+      console.log('📦 [REORDEN TABLE] WOs a redistribuir (desde', dropDate, '):', wosToRedistribute.length);
+      console.log('   Orden:', wosToRedistribute.map(w => `${w.NumWO}:${w.Fch_Objetivo.split('T')[0]}:seq${w.Secuencia}`));
+      console.log('🔒 [REORDEN TABLE] WOs anteriores intactas:', wosBeforeDrop.length);
+      
+      // 🆕 Crear mapa de capacity por día
+      const capacityByDay = new Map<string, number>();
+      const dayUsage = new Map<string, number>();
+      
+      workingDays.forEach(day => {
+        const dayCapacity = capacity.find(c => c.date === day && c.line === targetLine);
+        capacityByDay.set(day, dayCapacity?.capacity || DEFAULT_INITIAL_CAPACITY);
+        dayUsage.set(day, 0);
+      });
+      
+      // 🆕 CALCULAR capacity ya usada en días ANTERIORES al drop
+      wosBeforeDrop.forEach(wo => {
+        if (wo.Linea !== targetLine) return;
+        
+        const woDate = wo.Fch_Objetivo.split('T')[0];
+        const woHours = parseFloat(wo.horas_totales_de_la_wo) || 0;
+        const currentUsage = dayUsage.get(woDate) || 0;
+        dayUsage.set(woDate, currentUsage + woHours);
+      });
+      
+      console.log('📊 [REORDEN TABLE] Capacity pre-usada:', 
+        Array.from(dayUsage.entries())
+          .filter(([_, usage]) => usage > 0)
+          .map(([day, usage]) => `${day}:${usage.toFixed(2)}h`)
+      );
+      
+      // 🆕 Redistribuir WOs desde el día del drop
+      const redistributed: typeof wosToRedistribute = [];
+      
+      // Empezar desde el día del drop
+      let currentDayIndex = workingDays.findIndex(d => d === dropDate);
+      
+      if (currentDayIndex === -1) {
+        currentDayIndex = workingDays.findIndex(d => d >= dropDate);
+      }
+      
+      console.log('📅 [REORDEN TABLE] Iniciando redistribución desde:', workingDays[currentDayIndex]);
+      
+      wosToRedistribute.forEach((wo, idx) => {
+        const woHours = parseFloat(wo.horas_totales_de_la_wo) || 0;
+        let remainingHours = woHours;
+        let assignedToDay: string | null = null;
+        
+        console.log(`   🔧 Procesando ${wo.NumWO} (${woHours.toFixed(2)}h)...`);
+        
+        // Buscar día con capacity disponible DESDE currentDayIndex
+        while (currentDayIndex < workingDays.length && remainingHours > 0) {
+          const currentDay = workingDays[currentDayIndex];
+          const dayCapacity = capacityByDay.get(currentDay) || DEFAULT_INITIAL_CAPACITY;
+          const dayUsed = dayUsage.get(currentDay) || 0;
+          const availableCapacity = dayCapacity - dayUsed;
+          
+          if (availableCapacity > 0.01) { // Margen de error de 0.01h
+            // Asignar WO a este día
+            if (!assignedToDay) {
+              assignedToDay = currentDay;
+            }
+            
+            const hoursToUse = Math.min(remainingHours, availableCapacity);
+            dayUsage.set(currentDay, dayUsed + hoursToUse);
+            remainingHours -= hoursToUse;
+            
+            console.log(`      Día ${currentDay}: usa ${hoursToUse.toFixed(2)}h, quedan ${(availableCapacity - hoursToUse).toFixed(2)}h`);
+            
+            if (remainingHours <= 0.01) { // Margen de error
+              // WO completamente asignada
+              // NO avanzar currentDayIndex - la siguiente WO puede empezar en el mismo día si queda capacity
+              break;
+            }
+          }
+          
+          // Si el día está lleno, avanzar al siguiente
+          currentDayIndex++;
+        }
+        
+        if (assignedToDay) {
+          redistributed.push({
+            ...wo,
+            Fch_Objetivo: assignedToDay,
+            Secuencia: idx + 1
+          });
+          console.log(`      ✅ ${wo.NumWO} → ${assignedToDay} (seq ${idx + 1})`);
+        } else {
+          // Si no se pudo asignar, mantener en su día original
+          console.warn(`      ⚠️ ${wo.NumWO} no pudo ser asignada (sin capacity), manteniéndola en ${wo.Fch_Objetivo.split('T')[0]}`);
+          redistributed.push({
+            ...wo,
+            Secuencia: idx + 1
+          });
+        }
+        
+        // 🆕 CRÍTICO: NO resetear currentDayIndex
+        // Ya está en la posición correcta para la siguiente WO
+      });
+      
+      console.log('✅ [REORDEN TABLE] Redistribución completada:', redistributed.length, 'WOs');
+      
+      // 🆕 RECALCULAR SECUENCIAS POR DÍA (no usar índice global)
+      const redistributedByDay = new Map<string, typeof redistributed>();
+      redistributed.forEach(wo => {
+        const day = wo.Fch_Objetivo.split('T')[0];
+        if (!redistributedByDay.has(day)) {
+          redistributedByDay.set(day, []);
+        }
+        redistributedByDay.get(day)!.push(wo);
+      });
+      
+      // Reasignar secuencias correctas por día
+      const redistributedWithCorrectSeq: typeof redistributed = [];
+      redistributedByDay.forEach((wosInDay, day) => {
+        wosInDay.forEach((wo, dayIndex) => {
+          redistributedWithCorrectSeq.push({
+            ...wo,
+            Secuencia: dayIndex + 1  // Secuencia dentro del día
+          });
+          console.log(`      🔢 ${wo.NumWO} día ${day}: secuencia ${dayIndex + 1}`);
+        });
+      });
+      
+      console.log('✅ [REORDEN TABLE] Secuencias corregidas por día');
+      
+      // Combinar WOs anteriores (intactas) + WOs redistribuidas
+      const redistributedNumWOs = new Set(redistributedWithCorrectSeq.map(w => w.NumWO));
+      finalFabs = [
+        ...wosBeforeDrop.filter(wo => !redistributedNumWOs.has(wo.NumWO)),
+        ...redistributedWithCorrectSeq
+      ];
+      
+      console.log('✅ [REORDEN TABLE] Capacity aplicada (respetando orden). WOs finales:', finalFabs.length);
+    } else {
+      console.log('⚠️ [REORDEN TABLE] Capacity NO disponible, continuando sin aplicar restricciones');
+    }
+
+    // Ordenar resultado final
+    finalFabs.sort((a, b) => {
       const dateCompare = new Date(a.Fch_Objetivo).getTime() - new Date(b.Fch_Objetivo).getTime();
       if (dateCompare !== 0) return dateCompare;
       
@@ -339,13 +696,13 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       return a.Secuencia - b.Secuencia;
     });
 
-    console.log('📝 Actualizando contexto con', allFabs.length, 'fabricaciones ordenadas');
-    console.log('   Primeras 5:', allFabs.slice(0, 5).map(f => `${f.NumWO}:${f.Fch_Objetivo}:${f.Secuencia}`));
+    console.log('📝 Actualizando contexto con', finalFabs.length, 'fabricaciones ordenadas');
+    console.log('   Primeras 5:', finalFabs.slice(0, 5).map(f => `${f.NumWO}:${f.Fch_Objetivo}:${f.Secuencia}`));
 
-    onGanttOrdersChanged(allFabs);
+    onGanttOrdersChanged(finalFabs);
 
     console.log('✅ [REORDEN TABLE] Completado');
-  }, [fabricacionesFromContext, onGanttOrdersChanged]);
+  }, [fabricacionesFromContext, onGanttOrdersChanged, capacityLoaded, capacity, workingDays]);
 
   const handleRowHover = (woId: string | null) => {
     setHoveredRowId(woId);

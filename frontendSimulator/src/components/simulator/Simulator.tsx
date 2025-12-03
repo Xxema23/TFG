@@ -453,7 +453,12 @@ const Simulator: React.FC = () => {
       filteredFabrications: fabricacionesFiltradas,
       useFilteredData: hasActiveFilters,
       defaultLineFilter: defaultLineFilter,
-      lastUpdated: lastUpdated
+      lastUpdated: lastUpdated,
+      
+      // 🆕 NUEVO: Pasar capacidad del Gantt para aplicar restricciones
+      // Nota: Por ahora pasamos undefined, en el siguiente paso obtendremos estos datos del Gantt
+      ganttCapacity: undefined,
+      ganttWorkingDays: undefined
     };
 
     try {

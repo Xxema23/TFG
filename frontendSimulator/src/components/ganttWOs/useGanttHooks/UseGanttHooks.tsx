@@ -8,9 +8,10 @@ import { CapacityData } from "../../../interfaces/Capacity";
 import { IFabricacionConHoras } from "../../../interfaces/IFabricacionConHoras";
 import DropMonitor from "../DropMonitor";
 
-const DEFAULT_INITIAL_CAPACITY = 1000000;
+// ✅ EXPORTADAS para uso en DetailTablesPanel
+export const DEFAULT_INITIAL_CAPACITY = 1000000;
 
-const getWeekNumber = (date: Date): number => {
+export const getWeekNumber = (date: Date): number => {
   const target = new Date(date.valueOf());
   const dayNr = (date.getUTCDay() + 6) % 7;
   target.setUTCDate(target.getUTCDate() - dayNr + 3);
@@ -18,7 +19,8 @@ const getWeekNumber = (date: Date): number => {
   return 1 + Math.ceil((target.getTime() - firstThursday.getTime()) / 604800000);
 };
 
-const recalculateAffectedWorkOrders = (
+// ✅ EXPORTADA para uso en DetailTablesPanel
+export const recalculateAffectedWorkOrders = (
   workOrders: IFabricacionConHoras[],
   capacity: any[],
   workingDays: string[],
