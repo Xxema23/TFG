@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { useDrop, XYCoord } from 'react-dnd';
+import { useDrop } from 'react-dnd';
 
 interface DropAreaProps {
   day: string;
@@ -16,11 +16,10 @@ const DropArea: React.FC<DropAreaProps> = ({
   width,
   onDrop,
 }) => {
-  // SOLUCIÓN 1: Usar useRef para el elemento div
   const dropRef = useRef<HTMLDivElement>(null);
 
   /**
-   * Calcula el ID de la WO antes de la cual se debe insertar, basado en la posición del cursor.
+   * Calcula el ID de la WO antes de la cual se debe insertar
    */
   const calculateInsertPosition = (clientX: number): string | undefined => {
     console.log('🎯 calculateInsertPosition iniciado:', {
@@ -29,22 +28,22 @@ const DropArea: React.FC<DropAreaProps> = ({
       clientX
     });
 
-    // CORREGIDO: Intentar múltiples selectores para encontrar las WOs
+    // Intentar múltiples selectores para encontrar las WOs
     let workOrderElements: HTMLElement[] = [];
     
-    // Intento 1: Selector original
+    // Intento 1: Selector por clase y atributos
     workOrderElements = Array.from(
       document.querySelectorAll(`.work-order[data-day="${day}"][data-line="${line}"]`)
     ) as HTMLElement[];
     
-    // Intento 2: Si no encuentra, probar con otros selectores comunes
+    // Intento 2: Selector alternativo
     if (workOrderElements.length === 0) {
       workOrderElements = Array.from(
         document.querySelectorAll(`[data-day="${day}"][data-line="${line}"].work-order`)
       ) as HTMLElement[];
     }
     
-    // Intento 3: Buscar por atributos específicos del día y línea
+    // Intento 3: Buscar por atributos específicos
     if (workOrderElements.length === 0) {
       const allWOs = Array.from(document.querySelectorAll('[data-wo-id]')) as HTMLElement[];
       workOrderElements = allWOs.filter(el => 
@@ -52,40 +51,19 @@ const DropArea: React.FC<DropAreaProps> = ({
         el.getAttribute('data-line') === line
       );
     }
-    
-    // Intento 4: Buscar dentro del contenedor del día/línea
-    if (workOrderElements.length === 0) {
-      const dayContainer = document.querySelector(`[data-day="${day}"][data-line="${line}"]`);
-      if (dayContainer) {
-        workOrderElements = Array.from(
-          dayContainer.querySelectorAll('[data-wo-id]')
-        ) as HTMLElement[];
-      }
-    }
 
     console.log('🔍 Elementos encontrados:', {
       totalFound: workOrderElements.length,
-      selectors: [
-        `.work-order[data-day="${day}"][data-line="${line}"]`,
-        `[data-day="${day}"][data-line="${line}"].work-order`,
-        '[data-wo-id] filtered',
-        'container search'
-      ],
-      elements: workOrderElements.map(el => ({
-        woId: el.dataset.woId || el.getAttribute('data-wo-id') || undefined,
-        className: el.className,
-        dataDay: el.dataset.day || el.getAttribute('data-day') || undefined,
-        dataLine: el.dataset.line || el.getAttribute('data-line') || undefined,
-        rect: el.getBoundingClientRect()
-      }))
+      day,
+      line
     });
 
     if (workOrderElements.length === 0) {
       console.warn('❌ No se encontraron elementos WO para este día/línea');
-      return undefined; // Insertar al final por defecto
+      return undefined;
     }
 
-    // CORREGIDO: Obtener posiciones y ordenar correctamente
+    // Obtener posiciones y ordenar
     const elementsWithPositions = workOrderElements
       .map(el => {
         const rect = el.getBoundingClientRect();
@@ -101,37 +79,34 @@ const DropArea: React.FC<DropAreaProps> = ({
           rect
         };
       })
-      .filter(item => item.woId) // Solo elementos con ID válido
-      .sort((a, b) => a.left - b.left); // Ordenar por posición left
+      .filter(item => item.woId)
+      .sort((a, b) => a.left - b.left);
 
-    console.log('📍 Elementos con posiciones ordenados:', elementsWithPositions.map(item => ({
+    console.log('📍 Elementos ordenados:', elementsWithPositions.map(item => ({
       woId: item.woId,
       left: item.left,
-      right: item.right,
       center: item.center
     })));
 
-    // CORREGIDO: Lógica mejorada para determinar posición de inserción
+    // Determinar posición de inserción
     for (let i = 0; i < elementsWithPositions.length; i++) {
       const current = elementsWithPositions[i];
       
-      // CASO 1: Cursor está antes del primer elemento
+      // CASO 1: Cursor antes del primer elemento
       if (i === 0 && clientX < current.center) {
         console.log(`✅ Insertando antes del primer elemento: ${current.woId}`);
         return current.woId;
       }
       
-      // CASO 2: Cursor está entre dos elementos
+      // CASO 2: Cursor entre elementos
       if (i > 0) {
         const previous = elementsWithPositions[i - 1];
         
-        // Si el cursor está entre el final del anterior y el centro del actual
         if (clientX > previous.right && clientX < current.center) {
           console.log(`✅ Insertando entre elementos, antes de: ${current.woId}`);
           return current.woId;
         }
         
-        // Si el cursor está en la primera mitad del elemento actual
         if (clientX >= current.left && clientX < current.center) {
           console.log(`✅ Insertando en primera mitad de: ${current.woId}`);
           return current.woId;
@@ -139,15 +114,12 @@ const DropArea: React.FC<DropAreaProps> = ({
       }
     }
 
-    // CASO 3: Si llegamos aquí, insertar al final
-    console.log('✅ Insertando al final (después del último elemento)');
+    // CASO 3: Insertar al final
+    console.log('✅ Insertando al final');
     return undefined;
   };
 
-  /**
-   * Configuración del área de drop
-   */
-  const [{ isOver, canDrop, draggedItem }, drop] = useDrop({
+  const [{ isOver, canDrop }, drop] = useDrop({
     accept: "WORK_ORDER",
     drop: (item: { workOrders: string[] }, monitor) => {
       const clientOffset = monitor.getClientOffset();
@@ -162,48 +134,33 @@ const DropArea: React.FC<DropAreaProps> = ({
           line,
           insertBeforeWO,
           clientX: clientOffset.x,
-          draggedItems: item.workOrders,
-          dropAreaLeft: left,
-          dropAreaWidth: width
+          draggedItems: item.workOrders
         });
 
-        // AGREGADO: Validación adicional antes del drop
         if (!item.workOrders || item.workOrders.length === 0) {
           console.error('❌ No hay items para hacer drop');
           return;
         }
 
+        // ✅ SIMPLIFICADO: Pasamos el día del DropArea
+        // La corrección del día se hace en UseGanttHooks.stableHandleWorkOrderDrop
         onDrop(day, line, item.workOrders, insertBeforeWO);
-      } else {
-        console.log('⚠️ Drop cancelado:', {
-          didDrop: monitor.didDrop(),
-          hasClientOffset: !!clientOffset
-        });
       }
     },
     canDrop: (item: { workOrders: string[] }) => {
-      const canDropResult = item && item.workOrders && item.workOrders.length > 0;
-      console.log('🔍 CanDrop check:', {
-        item,
-        result: canDropResult,
-        day,
-        line
-      });
-      return canDropResult;
+      return item && item.workOrders && item.workOrders.length > 0;
     },
     collect: (monitor) => ({
       isOver: monitor.isOver({ shallow: true }),
       canDrop: monitor.canDrop(),
-      draggedItem: monitor.getItem() as { workOrders: string[] } | null,
     }),
   });
 
-  // SOLUCIÓN 1: Conectar la ref manualmente
   drop(dropRef);
 
   return (
     <div
-      ref={dropRef} // Usar la ref en lugar de la función drop directamente
+      ref={dropRef}
       style={{
         position: "absolute",
         left: `${left}px`,
@@ -223,19 +180,6 @@ const DropArea: React.FC<DropAreaProps> = ({
       data-drop-day={day}
       data-drop-line={line}
       className="drop-area-target"
-      onDragOver={(e) => {
-        e.preventDefault();
-        // REDUCIDO: Menos logging para evitar spam
-        if (Math.random() < 0.1) { // Solo log del 10% de los eventos
-          console.log('DropArea dragOver sample:', {
-            day,
-            line,
-            clientX: e.clientX,
-            isOver,
-            canDrop
-          });
-        }
-      }}
     >
       {isOver && canDrop && (
         <div 

@@ -158,16 +158,44 @@ export const useWorkOrderHandlers = (
   const handleWorkOrderDrop = useCallback(
     (targetDay: string, targetLine: string, insertBeforeWOId?: string, draggedItems?: string[]) => {
       const currentSelectedWOs = draggedItems || selectedWOs;
-      if (!data || currentSelectedWOs.length === 0) return;
+      
+      // ✅ PROTECCIÓN CRÍTICA: Verificar que data existe y tiene workOrders
+      if (!data || !data.workOrders || data.workOrders.length === 0) {
+        console.error('❌ [handleWorkOrderDrop] data o data.workOrders no está disponible:', {
+          hasData: !!data,
+          hasWorkOrders: !!(data && data.workOrders),
+          workOrdersLength: data?.workOrders?.length || 0
+        });
+        return;
+      }
+      
+      if (currentSelectedWOs.length === 0) {
+        console.warn('⚠️ [handleWorkOrderDrop] No hay WOs seleccionadas para mover');
+        return;
+      }
+
+      console.log('🎯 [handleWorkOrderDrop] RECIBIDO:', {
+        targetDay,
+        targetLine,
+        insertBeforeWOId,
+        draggedItems,
+        dataWorkOrders: data.workOrders.length
+      });
 
       setData((prevData) => {
-        if (!prevData) return null;
+        if (!prevData || !prevData.workOrders || prevData.workOrders.length === 0) {
+          console.error('❌ [handleWorkOrderDrop] prevData inválido');
+          return null;
+        }
 
         let workOrdersSnapshot = [...prevData.workOrders];
 
         const draggedWOsData = currentSelectedWOs.map(id => {
           const wo = workOrdersSnapshot.find(w => w.NumWO === id);
-          if (!wo) return null;
+          if (!wo) {
+            console.warn(`⚠️ WO ${id} no encontrada en workOrdersSnapshot`);
+            return null;
+          }
           return {
             ...wo,
             Fch_Objetivo_Prev: wo.Fch_Objetivo,
@@ -182,7 +210,12 @@ export const useWorkOrderHandlers = (
           Linea_Prev: string;
         }>;
 
-        if (draggedWOsData.length === 0) return prevData;
+        if (draggedWOsData.length === 0) {
+          console.error('❌ No se encontraron WOs para mover');
+          return prevData;
+        }
+
+        console.log('📦 WOs arrastradas:', draggedWOsData.map(w => w.NumWO));
 
         workOrdersSnapshot = workOrdersSnapshot.filter(wo => !currentSelectedWOs.includes(wo.NumWO));
 
@@ -196,6 +229,9 @@ export const useWorkOrderHandlers = (
           const referenceWOIndex = existingWOsInTarget.findIndex(wo => wo.NumWO === insertBeforeWOId);
           if (referenceWOIndex !== -1) {
             insertAtIndex = referenceWOIndex;
+            console.log(`📍 Insertando en índice ${insertAtIndex} (antes de ${insertBeforeWOId})`);
+          } else {
+            console.warn(`⚠️ WO de referencia ${insertBeforeWOId} no encontrada, insertando al final`);
           }
         }
 
@@ -209,6 +245,8 @@ export const useWorkOrderHandlers = (
           ...wo,
           Secuencia: index + 1
         }));
+
+        console.log('🔢 WOs resequenciadas:', resequencedWOs.map(w => `${w.NumWO}:seq${w.Secuencia}`));
 
         workOrdersSnapshot = workOrdersSnapshot.filter(wo =>
           !(wo.Fch_Objetivo === targetDay && wo.Linea === targetLine)
@@ -257,6 +295,8 @@ export const useWorkOrderHandlers = (
         }
 
         setSelectedWOs([]);
+
+        console.log('✅ Drop completado, total WOs:', workOrdersSnapshot.length);
 
         return {
           ...prevData,
