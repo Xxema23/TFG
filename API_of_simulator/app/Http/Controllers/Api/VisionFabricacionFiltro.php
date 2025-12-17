@@ -36,8 +36,18 @@ class VisionFabricacionFiltro extends Controller
                 'INSPECCION', 'RECEPCION', 'EXPEDICIONES', 
                 'VARIOS', 'ALMACEN', 'COMPRAS'
             ])
-            ->whereRaw("vf.fch_objetivo::date >= CURRENT_DATE - INTERVAL '20 days'")
-            ->whereRaw("vf.fch_objetivo::date <= CURRENT_DATE + INTERVAL '365 days'")
+            ->whereRaw("vf.fch_objetivo::timestamp >= CURRENT_DATE - INTERVAL '20 days'")
+            ->whereRaw("vf.fch_objetivo::timestamp <= CURRENT_DATE + INTERVAL '365 days'")
+            
+            // 🆕 EXCLUIR FINES DE SEMANA (Sábado=6, Domingo=0)
+            ->whereRaw("EXTRACT(DOW FROM vf.fch_objetivo::timestamp) NOT IN (0, 6)")
+            
+            // 🆕 EXCLUIR DÍAS NO LABORABLES (Festivos) - CORREGIDO
+            ->whereRaw("NOT EXISTS (
+                SELECT 1 FROM dias_no_laborales dnl
+                WHERE dnl.vacaciones::date = vf.fch_objetivo::date
+            )")
+            
             ->orderBy('vf.fch_objetivo', 'asc')
             ->orderBy('vf.secuencia_fab', 'asc')
             ->limit(1000)

@@ -1,4 +1,4 @@
-// DetailTablesPanel/hooks/UseTableSync.ts - VERSIÓN CORREGIDA
+// DetailTablesPanel/hooks/UseTableSync.ts - VERSIÓN DEFINITIVA
 import { useRef, useEffect } from 'react';
 
 interface UseTableSyncProps {
@@ -28,29 +28,60 @@ export const UseTableSync = ({
   const getOrderedWOIdsRef = useRef(getOrderedWOIds);
   getOrderedWOIdsRef.current = getOrderedWOIds;
 
-  // ✅ Sincronización de scroll entre tablas
+  // ✅ Guards para prevenir loops infinitos de scroll
+  const isScrollingFromLeft = useRef(false);
+  const isScrollingFromRight = useRef(false);
+
+  // ✅ SCROLL SINCRONIZADO - UNA SOLA VEZ AL MONTAR
   useEffect(() => {
-    const leftContainer = leftTableContainerRef.current;
-    const rightContainer = rightTableContainerRef.current;
-    
-    if (!leftContainer || !rightContainer) return;
-    
-    const handleLeftScroll = () => {
-      rightContainer.scrollTop = leftContainer.scrollTop;
-    };
-    
-    const handleRightScroll = () => {
-      leftContainer.scrollTop = rightContainer.scrollTop;
-    };
-    
-    leftContainer.addEventListener('scroll', handleLeftScroll);
-    rightContainer.addEventListener('scroll', handleRightScroll);
-    
-    return () => {
-      leftContainer.removeEventListener('scroll', handleLeftScroll);
-      rightContainer.removeEventListener('scroll', handleRightScroll);
-    };
-  }, []); // ✅ Dependencias vacías - solo se ejecuta una vez
+    // Esperamos a que los refs estén disponibles
+    const timer = setTimeout(() => {
+      const leftContainer = leftTableContainerRef.current;
+      const rightContainer = rightTableContainerRef.current;
+      
+      if (!leftContainer || !rightContainer) {
+        console.warn('⚠️ [UseTableSync] Contenedores no disponibles en el montaje');
+        return;
+      }
+      
+      const handleLeftScroll = () => {
+        if (isScrollingFromRight.current) return;
+        
+        isScrollingFromLeft.current = true;
+        rightContainer.scrollTop = leftContainer.scrollTop;
+        
+        setTimeout(() => {
+          isScrollingFromLeft.current = false;
+        }, 50);
+      };
+      
+      const handleRightScroll = () => {
+        if (isScrollingFromLeft.current) return;
+        
+        isScrollingFromRight.current = true;
+        leftContainer.scrollTop = rightContainer.scrollTop;
+        
+        setTimeout(() => {
+          isScrollingFromRight.current = false;
+        }, 50);
+      };
+      
+      console.log('✅ [UseTableSync] Registrando scroll listeners (PERMANENTEMENTE)');
+      
+      // Usar passive:false para prevenir comportamiento predeterminado si es necesario
+      leftContainer.addEventListener('scroll', handleLeftScroll, { passive: true });
+      rightContainer.addEventListener('scroll', handleRightScroll, { passive: true });
+      
+      // Cleanup solo cuando el componente se desmonta REALMENTE
+      return () => {
+        console.log('🧹 [UseTableSync] Limpiando scroll listeners (DESMONTAJE REAL)');
+        leftContainer.removeEventListener('scroll', handleLeftScroll);
+        rightContainer.removeEventListener('scroll', handleRightScroll);
+      };
+    }, 100); // Pequeño delay para asegurar que los refs están listos
+
+    return () => clearTimeout(timer);
+  }, []); // ✅ ARRAY VACÍO - solo se ejecuta al montar/desmontar
 
   // ✅ Sincronización de alturas de filas (con throttling para performance)
   useEffect(() => {
@@ -117,7 +148,7 @@ export const UseTableSync = ({
       if (timeoutId) clearTimeout(timeoutId);
       resizeObserver.disconnect();
     };
-  }, [workOrders.length, localOrderedWOIds.length]); // ✅ Dependencias estables
+  }, [workOrders.length, localOrderedWOIds.length]);
 
   return {
     leftTableContainerRef,

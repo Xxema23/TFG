@@ -10,3 +10,98 @@ body {
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
 }
+
+/* ===================================================================
+   SINCRONIZACIÓN DE ALTURAS - TABLAS EQUIPOS Y COMPONENTES
+   Añadido: 2025-12-12
+   ================================================================ */
+
+/* ⭐ ALTURA FIJA PARA FILAS DEL BODY - CRÍTICO PARA SINCRONIZACIÓN */
+#left-table tbody tr,
+#right-table tbody tr {
+  height: 44px !important;
+  min-height: 44px !important;
+  max-height: 44px !important;
+}
+
+/* ⭐ CELDAS CON CONTENIDO TRUNCADO Y ALINEACIÓN VERTICAL */
+#left-table tbody td,
+#right-table tbody td {
+  height: 44px !important;
+  padding: 0.5rem !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  line-height: 1.2;
+}
+
+/* ⭐ HEADERS SINCRONIZADOS */
+#left-table thead tr,
+#right-table thead tr {
+  height: 40px !important;
+  min-height: 40px !important;
+  max-height: 40px !important;
+}
+
+#left-table thead th,
+#right-table thead th {
+  height: 40px !important;
+  padding: 0.5rem !important;
+  vertical-align: middle;
+  line-height: 1.2;
+}
+
+/* ⭐ LAYOUT CONSISTENTE */
+#left-table,
+#right-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  table-layout: fixed;
+}
+
+/* ⭐ TRANSICIONES SUAVES */
+#left-table tbody tr,
+#right-table tbody tr {
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+/* ⭐ MEJORAS VISUALES */
+#left-table tbody tr:hover,
+#right-table tbody tr:hover {
+  background-color: rgba(243, 244, 246, 0.5) !important;
+}
+
+/* Bordes consistentes */
+#left-table td,
+#right-table td {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* Headers con mejor contraste */
+#left-table thead,
+#right-table thead {
+  background-color: #f9fafb;
+  border-bottom: 2px solid #d1d5db;
+}
+
+/* Zebra stripes (opcional) */
+#left-table tbody tr:nth-child(even),
+#right-table tbody tr:nth-child(even) {
+  background-color: rgba(249, 250, 251, 0.5);
+}
+
+/* Selección de filas */
+#left-table tbody tr[aria-selected="true"],
+#right-table tbody tr[aria-selected="true"] {
+  background-color: #dbeafe !important;
+  border-color: #93c5fd !important;
+}
+
+/* Drag and drop visual feedback */
+#left-table tbody tr[draggable="true"]:active,
+#right-table tbody tr[draggable="true"]:active {
+  cursor: grabbing !important;
+  opacity: 0.8;
+}

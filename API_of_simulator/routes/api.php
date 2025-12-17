@@ -48,6 +48,7 @@ Route::get('/filtros', [FiltrosController::class, 'index']);
 //Ruta para obtener la wo y su color correspondiente
 Route::get('/colores-wo', [ColoresWoController::class, 'index']);
 Route::get('/colores-wo-disponible', [ColoresWoControllerDisponible::class, 'index']);
+Route::post('/colores-wo-disponible', [ColoresWoControllerDisponible::class, 'index']);
 
 //Ruta para obtener el número de palets agrupados por orden de trabajo (wo)
 Route::get('/paletsfiltro', [PaletFiltro::class, 'index']);

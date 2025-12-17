@@ -277,6 +277,21 @@ export const useGanttHooks = () => {
     convertWeeklyToDaily
   } = useCapacityHandlers(workingDays, setData, data);
   
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const dataRef = useRef<GanttData | null>(null);
+  const workingDaysRef = useRef<string[]>([]);
+  const isRecalculatingRef = useRef(false);
+  const lastSyncTimestampRef = useRef<number>(0);
+
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+
+  useEffect(() => {
+    workingDaysRef.current = workingDays;
+  }, [workingDays]);
+
+  // ✅ CAMBIO CRÍTICO: Pasar dataRef al hook
   const {
     selectedWOs,
     setSelectedWOs,
@@ -291,21 +306,7 @@ export const useGanttHooks = () => {
     getWorkOrderCurrentState,
     applyCapacityChanges,
     reorderSequencesInDay
-  } = useWorkOrderHandlers(data, setData, workingDays, convertWeeklyToDaily);
-
-  const [zoomLevel, setZoomLevel] = useState(1);
-  const dataRef = useRef<GanttData | null>(null);
-  const workingDaysRef = useRef<string[]>([]);
-  const isRecalculatingRef = useRef(false);
-  const lastSyncTimestampRef = useRef<number>(0);
-
-  useEffect(() => {
-    dataRef.current = data;
-  }, [data]);
-
-  useEffect(() => {
-    workingDaysRef.current = workingDays;
-  }, [workingDays]);
+  } = useWorkOrderHandlers(data, setData, workingDays, convertWeeklyToDaily, dataRef);
 
   useEffect(() => {
     if (isRecalculatingRef.current) {

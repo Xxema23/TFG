@@ -368,7 +368,7 @@ export const EquipmentTable: React.FC<EquipmentTableProps> = ({
 
   if (!filteredWOIds || !Array.isArray(filteredWOIds)) {
     return (
-      <div className="overflow-y-auto overflow-x-auto h-[calc(100%-36px)] flex items-center justify-center">
+      <div className="flex items-center justify-center h-full">
         <div className="text-gray-500 text-center">
           <p>⚠️ Error: No se recibieron IDs de órdenes de trabajo válidos</p>
         </div>
@@ -401,7 +401,8 @@ export const EquipmentTable: React.FC<EquipmentTableProps> = ({
   });
 
   return (
-    <div className="overflow-y-auto overflow-x-auto h-[calc(100%-36px)]">
+    <>
+      {/* ✅ SIN h-[calc(...)] - El padre ya maneja el tamaño con flex-1 */}
       <table
         id="left-table"
         className="min-w-full border-collapse table-fixed"
@@ -482,7 +483,7 @@ export const EquipmentTable: React.FC<EquipmentTableProps> = ({
           </span>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

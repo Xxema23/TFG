@@ -20,7 +20,9 @@ export const useWorkOrderHandlers = (
   convertWeeklyToDaily: (
     capacities: any[],
     workingDays: string[]
-  ) => DailyCapacity[]
+  ) => DailyCapacity[],
+  // ✅ NUEVO PARÁMETRO
+  dataRef: React.MutableRefObject<GanttData | null>
 ) => {
   const [selectedWOs, setSelectedWOs] = useState<string[]>([]);
   const [draggedWOs, setDraggedWOs] = useState<string[]>([]);
@@ -159,12 +161,14 @@ export const useWorkOrderHandlers = (
     (targetDay: string, targetLine: string, insertBeforeWOId?: string, draggedItems?: string[]) => {
       const currentSelectedWOs = draggedItems || selectedWOs;
       
-      // ✅ PROTECCIÓN CRÍTICA: Verificar que data existe y tiene workOrders
-      if (!data || !data.workOrders || data.workOrders.length === 0) {
-        console.error('❌ [handleWorkOrderDrop] data o data.workOrders no está disponible:', {
-          hasData: !!data,
-          hasWorkOrders: !!(data && data.workOrders),
-          workOrdersLength: data?.workOrders?.length || 0
+      // ✅ CORREGIDO: Usar dataRef.current en vez de data
+      const currentData = dataRef.current;
+      
+      if (!currentData || !currentData.workOrders || currentData.workOrders.length === 0) {
+        console.error('❌ [handleWorkOrderDrop] dataRef.current no está disponible:', {
+          hasData: !!currentData,
+          hasWorkOrders: !!(currentData && currentData.workOrders),
+          workOrdersLength: currentData?.workOrders?.length || 0
         });
         return;
       }
@@ -179,13 +183,13 @@ export const useWorkOrderHandlers = (
         targetLine,
         insertBeforeWOId,
         draggedItems,
-        dataWorkOrders: data.workOrders.length
+        dataWorkOrders: currentData.workOrders.length
       });
 
       setData((prevData) => {
         if (!prevData || !prevData.workOrders || prevData.workOrders.length === 0) {
           console.error('❌ [handleWorkOrderDrop] prevData inválido');
-          return null;
+          return prevData; // ✅ Cambiado de null a prevData
         }
 
         let workOrdersSnapshot = [...prevData.workOrders];
@@ -304,7 +308,7 @@ export const useWorkOrderHandlers = (
         };
       });
     },
-    [selectedWOs, reorderSequencesInDay, data, scheduleAutoSave]
+    [selectedWOs, reorderSequencesInDay, dataRef, scheduleAutoSave] // ✅ Añadido dataRef
   );
 
   const getWorkOrderCurrentState = useCallback(

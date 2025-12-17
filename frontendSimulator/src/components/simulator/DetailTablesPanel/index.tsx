@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { DetailTablesPanelProps } from './types';
 import { openExpandedWindow } from './components/DetailModal';
 import EquipmentTable from './components/EquipmentTable';
@@ -12,6 +12,8 @@ import { useFabricacionesContext } from '../../../contexts/FabricacionesContext'
 import { recalculateAffectedWorkOrders, getWeekNumber, DEFAULT_INITIAL_CAPACITY } from '../../ganttWOs/useGanttHooks/UseGanttHooks';
 import { CapacityData } from '../../../interfaces/Capacity';
 import { getCapacities } from '../../../services/CapacityService';
+import { useComponentesDisponibilidad } from '../../../hooks/useComponentesDisponibilidad';
+import { transformComponentesData, calcularConsumoSecuencial } from '../../../services/componentesService';
 
 const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date }> = ({
   workOrders = [],
@@ -33,6 +35,12 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
   const [workingDays, setWorkingDays] = useState<string[]>([]);
   const [capacityLoaded, setCapacityLoaded] = useState(false);
 
+  // ✅ NUEVO: Refs para scroll sincronizado
+  const equipmentScrollRef = useRef<HTMLDivElement>(null);
+  const componentsScrollRef = useRef<HTMLDivElement>(null);
+  const isScrollingFromEquipment = useRef(false);
+  const isScrollingFromComponents = useRef(false);
+
   const {
     fabricaciones: fabricacionesFromContext,
     updateSingleFabricacion,
@@ -46,6 +54,43 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     error: fabricacionesError,
     refetch: refetchFabricaciones,
   } = useFabricacionesConHoras();
+
+  // ✅ NUEVO: Handlers para scroll sincronizado
+  const handleEquipmentScroll = useCallback(() => {
+    if (!isScrollingFromComponents.current && componentsScrollRef.current && equipmentScrollRef.current) {
+      isScrollingFromEquipment.current = true;
+      componentsScrollRef.current.scrollTop = equipmentScrollRef.current.scrollTop;
+      setTimeout(() => {
+        isScrollingFromEquipment.current = false;
+      }, 50);
+    }
+  }, []);
+
+  const handleComponentsScroll = useCallback(() => {
+    if (!isScrollingFromEquipment.current && equipmentScrollRef.current && componentsScrollRef.current) {
+      isScrollingFromComponents.current = true;
+      equipmentScrollRef.current.scrollTop = componentsScrollRef.current.scrollTop;
+      setTimeout(() => {
+        isScrollingFromComponents.current = false;
+      }, 50);
+    }
+  }, []);
+
+  // ✅ NUEVO: Efecto para sincronizar scroll
+  useEffect(() => {
+    const equipmentContainer = equipmentScrollRef.current;
+    const componentsContainer = componentsScrollRef.current;
+    
+    if (equipmentContainer && componentsContainer) {
+      equipmentContainer.addEventListener('scroll', handleEquipmentScroll);
+      componentsContainer.addEventListener('scroll', handleComponentsScroll);
+      
+      return () => {
+        equipmentContainer.removeEventListener('scroll', handleEquipmentScroll);
+        componentsContainer.removeEventListener('scroll', handleComponentsScroll);
+      };
+    }
+  }, [handleEquipmentScroll, handleComponentsScroll]);
 
   const dataToUse = useMemo(() => {
     console.log('🔍 [dataToUse] Evaluando:', {
@@ -89,6 +134,22 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     console.log('✅ Usando datos del hook:', fabricacionesConHoras.length);
     return fabricacionesConHoras;
   }, [fabricacionesFromContext, filteredFabrications, useFilteredData, fabricacionesConHoras, lastUpdated, defaultLineFilter]);
+
+  // 🆕 HOOK PARA CARGAR COMPONENTES DISPONIBILIDAD
+  const numWOsParaComponentes = useMemo(() => {
+    return dataToUse.map(fab => fab.NumWO);
+  }, [dataToUse]);
+
+  const {
+    componentes,
+    isLoading: isComponentesLoading,
+    error: componentesError,
+    refetch: refetchComponentes
+  } = useComponentesDisponibilidad({
+    numWOs: numWOsParaComponentes,
+    enabled: numWOsParaComponentes.length > 0,
+    limit: 10
+  });
 
   useEffect(() => {
     if (hasPendingChanges && dataToUse.length > 0) {
@@ -311,6 +372,72 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     return enriched;
   }, [dataToUse]);
 
+  // ✅ CÁLCULO DE CONSUMO SECUENCIAL
+  const { componentesColumnas, componentesData } = useMemo(() => {
+    if (componentes.length === 0 || enrichedWorkOrders.length === 0) {
+      return {
+        componentesColumnas: [],
+        componentesData: {}
+      };
+    }
+
+    console.log('🔢 [DetailTablesPanel] Calculando consumo secuencial...', {
+      componentesOriginales: componentes.length,
+      workOrders: enrichedWorkOrders.length
+    });
+
+    // ✅ PASO 1: Calcular consumo secuencial basado en orden visual
+    const componentesConConsumo = calcularConsumoSecuencial(
+      componentes,
+      enrichedWorkOrders.map(wo => ({
+        numWO: wo.numWO,
+        linea: wo.linea
+      }))
+    );
+
+    console.log('✅ [DetailTablesPanel] Consumo calculado:', {
+      componentesActualizados: componentesConConsumo.length
+    });
+
+    // ✅ PASO 2: Transformar a formato de tabla
+    const { availableComponents, componentAvailability } = transformComponentesData(componentesConConsumo,
+      enrichedWorkOrders.map(wo => wo.numWO) 
+    );
+
+    return {
+      componentesColumnas: availableComponents,
+      componentesData: componentAvailability
+    };
+  }, [componentes, enrichedWorkOrders]);
+
+  // 🔍 Debug de estructura final
+  useEffect(() => {
+    if (Object.keys(componentesData).length > 0) {
+      console.log('🔍 [ESTRUCTURA FINAL componentesData]', {
+        totalWOs: Object.keys(componentesData).length,
+        primeraWO: Object.keys(componentesData)[0],
+        datosDeEsaWO: componentesData[Object.keys(componentesData)[0]],
+        ejemploDetallado: Object.entries(componentesData).slice(0, 2).map(([wo, comps]) => ({
+          wo,
+          componentes: Object.entries(comps).map(([item, data]) => ({
+            item,
+            disponible: data.disponible,
+            necesita: data.req_quantity,
+            stockGlobal: data.stock_global
+          }))
+        }))
+      });
+    }
+  }, [componentesData]);
+
+  console.log('📊 [DetailTablesPanel] Estado componentes:', {
+    numWOs: numWOsParaComponentes.length,
+    componentes: componentes.length,
+    columnas: componentesColumnas.length,
+    isLoading: isComponentesLoading,
+    hasError: !!componentesError
+  });
+
   const filteredWOIds = useMemo(() => {
     const ids = enrichedWorkOrders.map(wo => wo.id);
     console.log('🔢 [filteredWOIds]:', {
@@ -371,7 +498,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       workingDaysLength: workingDays.length
     });
 
-    // ✅ CRÍTICO: Usar dataToUse (WOs filtradas) en lugar de fabricacionesFromContext
     const targetFab = dataToUse.find(f => f.NumWO === targetNumWO);
     if (!targetFab) {
       console.error('❌ Target no encontrado en dataToUse:', targetNumWO);
@@ -388,7 +514,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       Secuencia: targetFab.Secuencia
     });
 
-    // ✅ CRÍTICO: Buscar WOs arrastradas en dataToUse
     const draggedFabsOriginal = draggedNumWOs
       .map(numWO => dataToUse.find(f => f.NumWO === numWO))
       .filter(Boolean);
@@ -411,7 +536,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 
     console.log('📅 Cambiando WOs arrastradas al día/línea:', targetDay, targetLine);
 
-    // ✅ CRÍTICO: Trabajar solo con WOs de dataToUse
     const existingWosInTarget = dataToUse
       .filter(f => 
         f.Fch_Objetivo === targetDay && 
@@ -451,7 +575,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 
     console.log('🔄 Días/líneas originales a reordenar:', Array.from(originalLocations));
 
-    // ✅ CRÍTICO: Trabajar solo con WOs de dataToUse
     let allFabs = dataToUse.filter(f => {
       if (draggedNumWOs.includes(f.NumWO)) return false;
       if (f.Fch_Objetivo === targetDay && f.Linea === targetLine) return false;
@@ -481,7 +604,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       });
     });
 
-    // 🆕 APLICAR CAPACITY RESPETANDO ORDEN MANUAL
     let finalFabs = allFabs;
     
     if (capacityLoaded && capacity.length > 0 && workingDays.length > 0) {
@@ -643,7 +765,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     console.log('📝 Actualizando contexto con', finalFabs.length, 'fabricaciones ordenadas');
     console.log('   Primeras 5:', finalFabs.slice(0, 5).map(f => `${f.NumWO}:${f.Fch_Objetivo}:${f.Secuencia}`));
 
-    // ✅ CRÍTICO: Actualizar SOLO las WOs filtradas, manteniendo el resto del contexto intacto
     const numWOsModificados = new Set(finalFabs.map(f => f.NumWO));
     
     const contextoActualizado = fabricacionesFromContext.map(fabContext => {
@@ -657,7 +778,11 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     onGanttOrdersChanged(contextoActualizado);
 
     console.log('✅ [REORDEN TABLE] Completado');
-  }, [dataToUse, fabricacionesFromContext, onGanttOrdersChanged, capacityLoaded, capacity, workingDays]);
+    
+    // 🆕 RECARGAR COMPONENTES después del reorden
+    console.log('🔄 [REORDEN TABLE] Recargando componentes...');
+    refetchComponentes();
+  }, [dataToUse, fabricacionesFromContext, onGanttOrdersChanged, capacityLoaded, capacity, workingDays, refetchComponentes]);
 
   const handleRowHover = (woId: string | null) => {
     setHoveredRowId(woId);
@@ -667,13 +792,14 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     openExpandedWindow({
       filteredWOIds,
       workOrders: enrichedWorkOrders,
-      availableComponents,
-      componentAvailability
+      availableComponents: componentesColumnas,
+      componentAvailability: componentesData
     });
   };
 
   const handleRefreshData = () => {
     refetchFabricaciones();
+    refetchComponentes();
   };
 
   if (!useFilteredData && isFabricacionesLoading) {
@@ -737,13 +863,15 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
         </svg>
       </button>
 
+      {/* ✅ PANEL IZQUIERDO (EquipmentTable) - USA FLEX */}
       <div
-        className="h-full overflow-hidden"
+        className="flex flex-col h-full overflow-hidden"
         style={{
           width: leftWidth,
           marginTop: hasPendingChanges ? '80px' : '40px'
         }}
       >
+        {/* Header fijo */}
         <h3 className="font-medium p-2 bg-gray-100 flex-shrink-0 border-b">
           {useFilteredData ? 'Detalle Equipos - FILTRADO' : 'Detalle Equipos - TODAS LAS LÍNEAS'}
           <span className="text-xs text-gray-600 ml-2">
@@ -756,9 +884,13 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
           )}
         </h3>
 
+        {/* ✅ CONTENEDOR DE TABLA - flex-1 toma todo el espacio restante */}
         <div
-          ref={leftTableContainerRef}
-          className="overflow-hidden h-[calc(100%-36px)]"
+          ref={(el) => {
+            leftTableContainerRef.current = el;
+            equipmentScrollRef.current = el;
+          }}
+          className="flex-1 overflow-y-auto overflow-x-auto"
         >
           <EquipmentTable
             filteredWOIds={filteredWOIds}
@@ -775,25 +907,44 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 
       <ResizableDivider onMouseDown={handleMouseDown} />
 
+      {/* ✅ PANEL DERECHO (ComponentsTable) - USA FLEX */}
       <div
-        className="h-full overflow-hidden"
+        className="flex flex-col h-full overflow-hidden"
         style={{
           width: `calc(100% - ${leftWidth} - 2px)`,
           marginTop: hasPendingChanges ? '80px' : '40px'
         }}
       >
+        {/* Header fijo */}
         <h3 className="font-medium p-2 bg-gray-100 flex-shrink-0 border-b">
           Detalle Componentes
+          <span className="text-xs text-gray-600 ml-2">
+            - {componentesColumnas.length} artículos
+          </span>
+          {isComponentesLoading && (
+            <span className="text-xs text-blue-600 ml-2">
+              🔄 Cargando...
+            </span>
+          )}
+          {componentesError && (
+            <span className="text-xs text-red-600 ml-2">
+              ❌ Error
+            </span>
+          )}
         </h3>
 
+        {/* ✅ CONTENEDOR DE TABLA - flex-1 toma todo el espacio restante */}
         <div
-          ref={rightTableContainerRef}
-          className="overflow-hidden h-[calc(100%-36px)]"
+          ref={(el) => {
+            rightTableContainerRef.current = el;
+            componentsScrollRef.current = el;
+          }}
+          className="flex-1 overflow-y-auto overflow-x-auto"
         >
           <ComponentsTable
-            filteredWOIds={filteredWOIds}
-            availableComponents={availableComponents}
-            componentAvailability={componentAvailability}
+            workOrders={visibleWorkOrders}
+            availableComponents={componentesColumnas}
+            componentAvailability={componentesData}
             hoveredRowId={hoveredRowId}
             selectedRows={selectedRows}
             isDragging={false}
@@ -807,6 +958,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
             onDragLeave={() => {}}
             onDrop={() => {}}
             onDragEnd={() => {}}
+            isLoading={isComponentesLoading}
           />
         </div>
       </div>
