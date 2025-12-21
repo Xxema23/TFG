@@ -32,6 +32,7 @@ interface UseComponentesDisponibilidadReturn {
  * @param params - Parámetros del hook (numWOs, enabled, limit)
  * @returns Estado y funciones para gestionar componentes
  */
+
 export const useComponentesDisponibilidad = ({
   numWOs,
   enabled = true,

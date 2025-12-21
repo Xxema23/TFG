@@ -1,4 +1,4 @@
-// components/ComponentsTable.tsx - CON FILTRO DE COLUMNAS, CONSUMO SECUENCIAL Y SCROLL HORIZONTAL
+// components/ComponentsTable.tsx - VERSIÓN OPTIMIZADA
 import React, { useMemo } from 'react';
 
 interface ComponentsTableProps {
@@ -47,59 +47,72 @@ export const ComponentsTable: React.FC<ComponentsTableProps> = ({
   isLoading = false
 }) => {
   
-  console.log('🎨 [ComponentsTable] Renderizando:', {
+  console.log('🎨 [ComponentsTable] Render:', {
     workOrders: workOrders.length,
     availableComponents: availableComponents.length,
-    componentAvailability: Object.keys(componentAvailability).length,
-    selectedRows: selectedRows.size,
-    isLoading
+    selectedRows: selectedRows.size
   });
   
   /**
-   * ✅ FILTRO DE COLUMNAS: Mostrar solo componentes de WOs seleccionadas
-   * Si no hay selección → mostrar todas las columnas
-   * Si hay selección → mostrar UNIÓN de componentes de WOs seleccionadas
+   * ✅ FILTRO INTELIGENTE DE COLUMNAS
+   * Sin selección → mostrar top 10 de cada WO (del backend)
+   * Con selección → SOLO componentes de WOs seleccionadas, ordenados por criticidad
    */
   const filteredComponents = useMemo(() => {
-    // Sin selección → mostrar todas
+    // Sin selección → todas las columnas (ya son top 10 por WO del backend)
     if (selectedRows.size === 0) {
-      console.log('📊 [filteredComponents] Sin selección → mostrando todas:', availableComponents.length);
+      console.log('📊 [filteredComponents] Sin selección → mostrar todas:', availableComponents.length);
       return availableComponents;
     }
 
-    // Con selección → UNIÓN de componentes
-    const componentesUnion = new Set<string>();
+    // ✅ Con selección → SOLO componentes de WOs seleccionadas
+    const componentesSet = new Set<string>();
     
     selectedRows.forEach(woId => {
       const wo = workOrders.find(w => w.id === woId);
       if (wo && componentAvailability[wo.numWO]) {
         Object.keys(componentAvailability[wo.numWO]).forEach(itemCode => {
           if (itemCode !== 'NO_COMPONENTS') {
-            componentesUnion.add(itemCode);
+            componentesSet.add(itemCode);
           }
         });
       }
     });
 
-    const resultado = Array.from(componentesUnion).sort();
+    // ✅ Ordenar por CRITICIDAD (menor disponible primero)
+    const componentsArray = Array.from(componentesSet);
     
-    console.log('🔍 [filteredComponents] Filtradas por selección:', {
-      wosSeleccionadas: selectedRows.size,
-      componentesTotales: availableComponents.length,
-      componentesFiltrados: resultado.length,
-      componentes: resultado
+    const sorted = componentsArray.sort((a, b) => {
+      let minA = Infinity;
+      let minB = Infinity;
+      
+      // Encontrar disponibilidad MÍNIMA entre todas las WOs seleccionadas
+      selectedRows.forEach(woId => {
+        const wo = workOrders.find(w => w.id === woId);
+        if (wo) {
+          const compA = componentAvailability[wo.numWO]?.[a];
+          const compB = componentAvailability[wo.numWO]?.[b];
+          
+          if (compA) minA = Math.min(minA, compA.disponible);
+          if (compB) minB = Math.min(minB, compB.disponible);
+        }
+      });
+      
+      // Más críticos primero (incluyendo negativos)
+      return minA - minB;
+    });
+    
+    console.log('🔍 [filteredComponents] Seleccionadas:', {
+      wos: selectedRows.size,
+      componentes: sorted.length,
+      top5Críticos: sorted.slice(0, 5)
     });
 
-    return resultado;
+    return sorted;
   }, [selectedRows, workOrders, availableComponents, componentAvailability]);
 
-  /**
-   * ✅ VERDE/ROJO - Sistema basado en disponibilidad después de consumo
-   * VERDE: disponible > 0 (hay stock)
-   * ROJO: disponible ≤ 0 (sin stock)
-   */
+  // ✅ Renderizar valor con color
   const renderValue = (disponible: number, reqQuantity: number): React.ReactNode => {
-    // ✅ VERDE: Hay stock suficiente
     if (disponible > 0) {
       return (
         <div className="flex flex-col items-center">
@@ -113,7 +126,6 @@ export const ComponentsTable: React.FC<ComponentsTableProps> = ({
       );
     }
 
-    // ❌ ROJO: Sin stock
     return (
       <div className="flex flex-col items-center">
         <span className="text-red-700 font-bold text-xs">
@@ -126,13 +138,10 @@ export const ComponentsTable: React.FC<ComponentsTableProps> = ({
     );
   };
 
-  /**
-   * ✅ Renderiza una celda de componente con fondo coloreado
-   */
+  // ✅ Renderizar celda
   const renderCell = (wo: string, itemCode: string) => {
     const comp = componentAvailability[wo]?.[itemCode];
     
-    // Sin datos
     if (!comp) {
       return (
         <td key={itemCode} className="px-2 py-1 text-center border-b bg-gray-50">
@@ -145,7 +154,6 @@ export const ComponentsTable: React.FC<ComponentsTableProps> = ({
     const reqQuantity = comp.req_quantity;
     const stockGlobal = comp.stock_global;
     
-    // Determinar estilos según disponibilidad
     const bgColor = disponible > 0 
       ? 'bg-green-50 hover:bg-green-100' 
       : 'bg-red-50 hover:bg-red-100';
@@ -154,16 +162,9 @@ export const ComponentsTable: React.FC<ComponentsTableProps> = ({
       ? 'border-l-2 border-green-300' 
       : 'border-l-2 border-red-300';
     
-    // Tooltip con información detallada
     const tooltip = disponible > 0
-      ? `✅ ${itemCode}\n` +
-        `Stock disponible: ${disponible} uds\n` +
-        `Esta WO necesita: ${reqQuantity} uds\n` +
-        `Stock global inicial: ${stockGlobal} uds`
-      : `❌ ${itemCode}\n` +
-        `Stock disponible: ${disponible} uds (AGOTADO)\n` +
-        `Esta WO necesita: ${reqQuantity} uds\n` +
-        `Stock global inicial: ${stockGlobal} uds`;
+      ? `✅ ${itemCode}\nDisponible: ${disponible} uds\nNecesita: ${reqQuantity} uds\nStock global: ${stockGlobal} uds`
+      : `❌ ${itemCode}\nDisponible: ${disponible} uds (AGOTADO)\nNecesita: ${reqQuantity} uds\nStock global: ${stockGlobal} uds`;
 
     return (
       <td 
@@ -176,20 +177,18 @@ export const ComponentsTable: React.FC<ComponentsTableProps> = ({
     );
   };
 
-  // ⏳ Estado de carga
+  // Estados de carga/error
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-50">
         <div className="text-gray-500 text-center">
           <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
           <p className="font-medium">Cargando componentes...</p>
-          <p className="text-sm text-gray-400 mt-1">Por favor espera</p>
         </div>
       </div>
     );
   }
 
-  // ❌ Sin datos
   if (workOrders.length === 0) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-50">
@@ -198,13 +197,11 @@ export const ComponentsTable: React.FC<ComponentsTableProps> = ({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
           </svg>
           <p className="font-medium">No hay órdenes de trabajo</p>
-          <p className="text-sm text-gray-400 mt-1">Ajusta los filtros para ver datos</p>
         </div>
       </div>
     );
   }
 
-  // ❌ Sin componentes (después de filtrar)
   if (filteredComponents.length === 0) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-50">
@@ -212,11 +209,11 @@ export const ComponentsTable: React.FC<ComponentsTableProps> = ({
           <svg className="w-16 h-16 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
-          <p className="font-medium">No hay componentes disponibles</p>
+          <p className="font-medium">No hay componentes</p>
           <p className="text-sm text-gray-400 mt-1">
             {selectedRows.size > 0 
-              ? 'Las WOs seleccionadas no tienen artículos asociados'
-              : 'Las WOs no tienen artículos asociados'
+              ? 'Las WOs seleccionadas no tienen artículos'
+              : 'Las WOs no tienen artículos'
             }
           </p>
         </div>
@@ -224,105 +221,81 @@ export const ComponentsTable: React.FC<ComponentsTableProps> = ({
     );
   }
 
-  // ✅ Tabla principal - SIN h-[calc(...)] - El padre ya maneja el tamaño
+  // ✅ TABLA PRINCIPAL - SIN BANNER AZUL ❌
   return (
-    <>
-      {selectedRows.size > 0 && (
-        <div className="bg-blue-50 border-b border-blue-200 px-3 py-2 text-xs text-blue-700 sticky top-0 z-10">
-          🔍 Mostrando {filteredComponents.length} componentes de {selectedRows.size} WO{selectedRows.size > 1 ? 's' : ''} seleccionada{selectedRows.size > 1 ? 's' : ''}
-          <button
-            className="ml-2 text-blue-600 hover:text-blue-800 underline"
-            onClick={() => {
-              console.log('Limpiar selección solicitado');
-            }}
-          >
-            (Mostrar todas)
-          </button>
-        </div>
-      )}
-      
-      <table 
-        id="right-table"
-        className="border-collapse"
-        style={{ 
-          borderSpacing: 0,
-          minWidth: `${Math.max(800, (filteredComponents.length + 1) * 150)}px`
-        }}
-      >
-        <thead>
-          <tr className="bg-gray-100 text-xs sticky top-0 z-10 border-b-2 border-gray-300">
-            <th className="px-2 py-2 text-left border-b sticky top-0 z-10 bg-gray-100 w-28 font-bold text-gray-700">
-              NumWO
+    <table 
+      id="right-table"
+      className="border-collapse"
+      style={{ 
+        borderSpacing: 0,
+        minWidth: `${Math.max(800, (filteredComponents.length + 1) * 150)}px`
+      }}
+    >
+      <thead>
+        <tr className="bg-gray-100 text-xs sticky top-0 z-10 border-b-2 border-gray-300">
+          <th className="px-2 py-2 text-left border-b sticky top-0 z-10 bg-gray-100 w-28 font-bold text-gray-700">
+            NumWO
+          </th>
+          {filteredComponents.map((component) => (
+            <th 
+              key={component} 
+              className="px-2 py-2 text-center border-b sticky top-0 z-10 bg-gray-100 w-24 font-bold text-gray-700"
+              title={`Artículo: ${component}`}
+            >
+              <div className="truncate">
+                {component}
+              </div>
             </th>
-            {filteredComponents.map((component) => (
-              <th 
-                key={component} 
-                className="px-2 py-2 text-center border-b sticky top-0 z-10 bg-gray-100 w-24 font-bold text-gray-700"
-                title={`Artículo: ${component}`}
-              >
-                <div className="truncate">
-                  {component}
-                </div>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {workOrders.map((wo, index) => {
-            const woId = wo.id;
-            const numWO = wo.numWO;
-            const isSelected = selectedRows.has(woId);
-            const isBeingDragged = isDragging && selectedRows.has(woId);
-            const isDropTarget = draggedOverWO === woId && !selectedRows.has(woId);
-            
-            return (
-              <tr 
-                key={woId}
-                ref={(el) => {
-                  if (rightRowsRef.current) {
-                    rightRowsRef.current[woId] = el;
-                  }
-                }}
-                draggable
-                className={`
-                  transition-all duration-150 cursor-grab active:cursor-grabbing border-b
-                  ${hoveredRowId === woId ? 'bg-blue-50' : 'hover:bg-gray-50'}
-                  ${isSelected ? 'bg-blue-100 border-blue-300 shadow-sm' : ''}
-                  ${isBeingDragged ? 'opacity-60' : ''}
-                  ${isDropTarget ? 'border-t-4 border-blue-500' : ''}
-                `.replace(/\s+/g, ' ').trim()}
-                onClick={(e) => onRowSelection(woId, index, e)}
-                onMouseEnter={() => onRowHover(woId)}
-                onMouseLeave={() => onRowHover(null)}
-                onDragStart={(e) => onDragStart(e, woId)}
-                onDragOver={(e) => onDragOver(e, woId)}
-                onDragEnter={(e) => onDragEnter(e, woId)}
-                onDragLeave={onDragLeave}
-                onDrop={(e) => onDrop(e, woId)}
-                onDragEnd={onDragEnd}
-                role="row"
-                tabIndex={0}
-                aria-selected={isSelected}
-              >
-                <td className="px-2 py-1 text-left font-semibold text-xs whitespace-nowrap border-b bg-white">
-                  <span 
-                    className={`
-                      ${isSelected ? 'text-blue-800' : 'text-gray-900'}
-                      ${isBeingDragged ? 'text-blue-600' : ''}
-                    `.trim()}
-                  >
-                    {numWO}
-                  </span>
-                </td>
-                {filteredComponents.map((component) => 
-                  renderCell(numWO, component)
-                )}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {workOrders.map((wo, index) => {
+          const woId = wo.id;
+          const numWO = wo.numWO;
+          const isSelected = selectedRows.has(woId);
+          const isBeingDragged = isDragging && selectedRows.has(woId);
+          const isDropTarget = draggedOverWO === woId && !selectedRows.has(woId);
+          
+          return (
+            <tr 
+              key={woId}
+              ref={(el) => {
+                if (rightRowsRef.current) {
+                  rightRowsRef.current[woId] = el;
+                }
+              }}
+              draggable
+              className={`
+                transition-all duration-150 cursor-grab active:cursor-grabbing border-b
+                ${hoveredRowId === woId ? 'bg-blue-50' : 'hover:bg-gray-50'}
+                ${isSelected ? 'bg-blue-100 border-blue-300 shadow-sm' : ''}
+                ${isBeingDragged ? 'opacity-60' : ''}
+                ${isDropTarget ? 'border-t-4 border-blue-500' : ''}
+              `.replace(/\s+/g, ' ').trim()}
+              onClick={(e) => onRowSelection(woId, index, e)}
+              onMouseEnter={() => onRowHover(woId)}
+              onMouseLeave={() => onRowHover(null)}
+              onDragStart={(e) => onDragStart(e, woId)}
+              onDragOver={(e) => onDragOver(e, woId)}
+              onDragEnter={(e) => onDragEnter(e, woId)}
+              onDragLeave={onDragLeave}
+              onDrop={(e) => onDrop(e, woId)}
+              onDragEnd={onDragEnd}
+            >
+              <td className="px-2 py-1 text-left font-semibold text-xs whitespace-nowrap border-b bg-white">
+                <span className={isSelected ? 'text-blue-800' : 'text-gray-900'}>
+                  {numWO}
+                </span>
+              </td>
+              {filteredComponents.map((component) => 
+                renderCell(numWO, component)
+              )}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 };
 

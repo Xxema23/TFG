@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { DetailTablesPanelProps } from './types';
 import { openExpandedWindow } from './components/DetailModal';
 import EquipmentTable from './components/EquipmentTable';
@@ -35,12 +35,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
   const [workingDays, setWorkingDays] = useState<string[]>([]);
   const [capacityLoaded, setCapacityLoaded] = useState(false);
 
-  // ✅ NUEVO: Refs para scroll sincronizado
-  const equipmentScrollRef = useRef<HTMLDivElement>(null);
-  const componentsScrollRef = useRef<HTMLDivElement>(null);
-  const isScrollingFromEquipment = useRef(false);
-  const isScrollingFromComponents = useRef(false);
-
   const {
     fabricaciones: fabricacionesFromContext,
     updateSingleFabricacion,
@@ -54,43 +48,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     error: fabricacionesError,
     refetch: refetchFabricaciones,
   } = useFabricacionesConHoras();
-
-  // ✅ NUEVO: Handlers para scroll sincronizado
-  const handleEquipmentScroll = useCallback(() => {
-    if (!isScrollingFromComponents.current && componentsScrollRef.current && equipmentScrollRef.current) {
-      isScrollingFromEquipment.current = true;
-      componentsScrollRef.current.scrollTop = equipmentScrollRef.current.scrollTop;
-      setTimeout(() => {
-        isScrollingFromEquipment.current = false;
-      }, 50);
-    }
-  }, []);
-
-  const handleComponentsScroll = useCallback(() => {
-    if (!isScrollingFromEquipment.current && equipmentScrollRef.current && componentsScrollRef.current) {
-      isScrollingFromComponents.current = true;
-      equipmentScrollRef.current.scrollTop = componentsScrollRef.current.scrollTop;
-      setTimeout(() => {
-        isScrollingFromComponents.current = false;
-      }, 50);
-    }
-  }, []);
-
-  // ✅ NUEVO: Efecto para sincronizar scroll
-  useEffect(() => {
-    const equipmentContainer = equipmentScrollRef.current;
-    const componentsContainer = componentsScrollRef.current;
-    
-    if (equipmentContainer && componentsContainer) {
-      equipmentContainer.addEventListener('scroll', handleEquipmentScroll);
-      componentsContainer.addEventListener('scroll', handleComponentsScroll);
-      
-      return () => {
-        equipmentContainer.removeEventListener('scroll', handleEquipmentScroll);
-        componentsContainer.removeEventListener('scroll', handleComponentsScroll);
-      };
-    }
-  }, [handleEquipmentScroll, handleComponentsScroll]);
 
   const dataToUse = useMemo(() => {
     console.log('🔍 [dataToUse] Evaluando:', {
@@ -400,7 +357,8 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     });
 
     // ✅ PASO 2: Transformar a formato de tabla
-    const { availableComponents, componentAvailability } = transformComponentesData(componentesConConsumo,
+    const { availableComponents, componentAvailability } = transformComponentesData(
+      componentesConConsumo,
       enrichedWorkOrders.map(wo => wo.numWO) 
     );
 
@@ -863,7 +821,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
         </svg>
       </button>
 
-      {/* ✅ PANEL IZQUIERDO (EquipmentTable) - USA FLEX */}
+      {/* ✅ PANEL IZQUIERDO (EquipmentTable) */}
       <div
         className="flex flex-col h-full overflow-hidden"
         style={{
@@ -871,7 +829,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
           marginTop: hasPendingChanges ? '80px' : '40px'
         }}
       >
-        {/* Header fijo */}
         <h3 className="font-medium p-2 bg-gray-100 flex-shrink-0 border-b">
           {useFilteredData ? 'Detalle Equipos - FILTRADO' : 'Detalle Equipos - TODAS LAS LÍNEAS'}
           <span className="text-xs text-gray-600 ml-2">
@@ -884,12 +841,8 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
           )}
         </h3>
 
-        {/* ✅ CONTENEDOR DE TABLA - flex-1 toma todo el espacio restante */}
         <div
-          ref={(el) => {
-            leftTableContainerRef.current = el;
-            equipmentScrollRef.current = el;
-          }}
+          ref={leftTableContainerRef}
           className="flex-1 overflow-y-auto overflow-x-auto"
         >
           <EquipmentTable
@@ -907,7 +860,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 
       <ResizableDivider onMouseDown={handleMouseDown} />
 
-      {/* ✅ PANEL DERECHO (ComponentsTable) - USA FLEX */}
+      {/* ✅ PANEL DERECHO (ComponentsTable) */}
       <div
         className="flex flex-col h-full overflow-hidden"
         style={{
@@ -915,7 +868,18 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
           marginTop: hasPendingChanges ? '80px' : '40px'
         }}
       >
-        {/* Header fijo */}
+        {/* ⚠️ WARNING: Muchas columnas */}
+        {componentesColumnas.length > 200 && (
+          <div className="bg-yellow-50 border-b border-yellow-300 px-3 py-2 text-xs text-yellow-800 flex items-center gap-2">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <span className="font-medium">
+              ⚠️ {componentesColumnas.length} columnas - Usa scroll horizontal o selecciona WOs específicas
+            </span>
+          </div>
+        )}
+
         <h3 className="font-medium p-2 bg-gray-100 flex-shrink-0 border-b">
           Detalle Componentes
           <span className="text-xs text-gray-600 ml-2">
@@ -933,12 +897,8 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
           )}
         </h3>
 
-        {/* ✅ CONTENEDOR DE TABLA - flex-1 toma todo el espacio restante */}
         <div
-          ref={(el) => {
-            rightTableContainerRef.current = el;
-            componentsScrollRef.current = el;
-          }}
+          ref={rightTableContainerRef}
           className="flex-1 overflow-y-auto overflow-x-auto"
         >
           <ComponentsTable
