@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { IComponenteDisponibilidad } from '../interfaces/IComponenteDisponibilidad';
 import { getComponentesDisponibilidad, transformComponentesData } from '../services/componentesService';
 
@@ -43,6 +43,22 @@ export const useComponentesDisponibilidad = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   
+  // ✅ OPTIMIZACIÓN 1: Ref para tracking de requests en vuelo
+  const abortControllerRef = useRef<AbortController | null>(null);
+  
+  // ✅ OPTIMIZACIÓN 2: Signature ESTABLE para evitar re-fetches innecesarios
+  const numWOsSignature = useMemo(() => {
+    if (numWOs.length === 0) return '';
+    
+    // Crear signature basada en contenido real, no en referencia del array
+    // Solo cambia si los NumWOs realmente cambian
+    return [...numWOs].sort().join(',');
+  }, [
+    numWOs.length,                      // Cambia si agregan/quitan WOs
+    numWOs[0],                          // Cambia si primera WO es diferente
+    numWOs[numWOs.length - 1]           // Cambia si última WO es diferente
+  ]);
+  
   // 🔄 Función para cargar datos
   const loadComponentes = async () => {
     // Si no está habilitado o no hay WOs, no cargar
@@ -52,34 +68,73 @@ export const useComponentesDisponibilidad = ({
       return;
     }
     
+    // ✅ OPTIMIZACIÓN 3: Cancelar request anterior si existe
+    if (abortControllerRef.current) {
+      console.log('🚫 [useComponentesDisponibilidad] Cancelando request anterior');
+      abortControllerRef.current.abort();
+    }
+    
+    // Crear nuevo AbortController para este request
+    abortControllerRef.current = new AbortController();
+    
     setIsLoading(true);
     setError(null);
     
     try {
       console.log('🔄 [useComponentesDisponibilidad] Cargando componentes para', numWOs.length, 'WOs');
+      console.log('🔑 [useComponentesDisponibilidad] Signature:', numWOsSignature.substring(0, 50) + '...');
       
       const data = await getComponentesDisponibilidad({
         wos: numWOs,
         limit
       });
       
+      // ✅ Verificar si el request fue cancelado
+      if (abortControllerRef.current?.signal.aborted) {
+        console.log('🚫 [useComponentesDisponibilidad] Request cancelado, ignorando resultado');
+        return;
+      }
+      
       setComponentes(data);
       
       console.log('✅ [useComponentesDisponibilidad] Componentes cargados:', data.length);
       
     } catch (err) {
+      // ✅ Ignorar errores de cancelación
+      if (err instanceof Error && err.name === 'AbortError') {
+        console.log('🚫 [useComponentesDisponibilidad] Request abortado');
+        return;
+      }
+      
       const error = err instanceof Error ? err : new Error('Error desconocido');
       setError(error);
       console.error('❌ [useComponentesDisponibilidad] Error:', error.message);
     } finally {
       setIsLoading(false);
+      abortControllerRef.current = null;
     }
   };
   
-  // 🎯 Efecto para cargar datos cuando cambian los NumWOs
+  // 🎯 OPTIMIZACIÓN 4: useEffect con signature estable y cleanup
   useEffect(() => {
+    console.log('🔄 [useComponentesDisponibilidad] Effect triggered:', {
+      signature: numWOsSignature.substring(0, 50) + '...',
+      enabled,
+      limit,
+      numWOsLength: numWOs.length
+    });
+    
     loadComponentes();
-  }, [JSON.stringify(numWOs), enabled, limit]); // JSON.stringify para comparación profunda
+    
+    // ✅ Cleanup: cancelar request si componente se desmonta o signature cambia
+    return () => {
+      if (abortControllerRef.current) {
+        console.log('🧹 [useComponentesDisponibilidad] Cleanup: cancelando request');
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, [numWOsSignature, enabled, limit]); // ✅ Dependencies optimizadas
   
   // 📊 Transformar datos para ComponentsTable (memoizado)
   const { availableComponents, componentAvailability } = useMemo(() => {
@@ -89,6 +144,8 @@ export const useComponentesDisponibilidad = ({
         componentAvailability: {}
       };
     }
+    
+    console.log('🔄 [useComponentesDisponibilidad] Transformando datos:', componentes.length);
     
     return transformComponentesData(componentes);
   }, [componentes]);

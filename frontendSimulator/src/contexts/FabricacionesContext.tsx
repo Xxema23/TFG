@@ -107,54 +107,81 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
   }, []);
 
   const onGanttOrdersChanged = useCallback((reorderedOrders: IFabricacionConHoras[], fromCapacity = false) => {
-    console.log('🔄 [FabricacionesContext] Gantt notifica cambio de órdenes:', {
-      totalWOs: reorderedOrders.length,
-      fromCapacity,
-      primerasWOs: reorderedOrders.slice(0, 3).map(w => ({
-        NumWO: w.NumWO,
-        Fecha: w.Fch_Objetivo,
-        Linea: w.Linea,
-        Seq: w.Secuencia
-      }))
+  console.log('🔄 [FabricacionesContext] Gantt notifica cambio de órdenes:', {
+    totalWOs: reorderedOrders.length,
+    fromCapacity,
+    primerasWOs: reorderedOrders.slice(0, 3).map(w => ({
+      NumWO: w.NumWO,
+      Fecha: w.Fch_Objetivo,
+      Linea: w.Linea,
+      Seq: w.Secuencia
+    }))
+  });
+  
+  // ✅ CRÍTICO: MERGE en lugar de REPLACE
+  setFabricaciones(prevFabs => {
+    // Crear mapa de WOs recibidas
+    const updatedWOsMap = new Map<string, IFabricacionConHoras>();
+    reorderedOrders.forEach(wo => updatedWOsMap.set(wo.NumWO, wo));
+    
+    // Actualizar solo las WOs modificadas, mantener el resto
+    const mergedFabs = prevFabs.map(fab => {
+      const updated = updatedWOsMap.get(fab.NumWO);
+      return updated || fab; // Si existe en reorderedOrders, usar la nueva, sino mantener original
     });
     
-    setFabricaciones(reorderedOrders);
-    setLastUpdated(new Date());
+    // Añadir WOs nuevas que no existían (edge case)
+    reorderedOrders.forEach(wo => {
+      if (!prevFabs.find(f => f.NumWO === wo.NumWO)) {
+        mergedFabs.push(wo);
+      }
+    });
+    
+    console.log(`✅ Merge completado: ${prevFabs.length} → ${mergedFabs.length} fabricaciones`);
+    return mergedFabs;
+  });
+  
+  setLastUpdated(new Date());
 
-    if (fromCapacity) {
-      console.log('⚠️ Cambio desde capacidad, actualizando snapshot original (NO se trackea)');
-      setOriginalFabricaciones([...reorderedOrders]);
+  if (fromCapacity) {
+    console.log('⚠️ Cambio desde capacidad, actualizando snapshot original (NO se trackea)');
+    setOriginalFabricaciones(prev => {
+      const updatedWOsMap = new Map<string, IFabricacionConHoras>();
+      reorderedOrders.forEach(wo => updatedWOsMap.set(wo.NumWO, wo));
+      
+      return prev.map(fab => updatedWOsMap.get(fab.NumWO) || fab);
+    });
+    return;
+  }
+
+  const newPendingChanges = new Map<string, PendingChange>();
+  
+  reorderedOrders.forEach(currentWO => {
+    const originalWO = originalFabricaciones.find(o => o.NumWO === currentWO.NumWO);
+    
+    if (!originalWO) {
+      console.warn('⚠️ WO no encontrada en original:', currentWO.NumWO);
       return;
     }
 
-    const newPendingChanges = new Map<string, PendingChange>();
+    const changes = detectChanges(originalWO, currentWO);
     
-    reorderedOrders.forEach(currentWO => {
-      const originalWO = originalFabricaciones.find(o => o.NumWO === currentWO.NumWO);
+    if (changes) {
+      newPendingChanges.set(currentWO.NumWO, {
+        NumWO: currentWO.NumWO,
+        changes,
+        timestamp: new Date()
+      });
       
-      if (!originalWO) {
-        console.warn('⚠️ WO no encontrada en original:', currentWO.NumWO);
-        return;
-      }
+      console.log(`📝 Cambio detectado en ${currentWO.NumWO}:`, changes);
+    }
+  });
 
-      const changes = detectChanges(originalWO, currentWO);
-      
-      if (changes) {
-        newPendingChanges.set(currentWO.NumWO, {
-          NumWO: currentWO.NumWO,
-          changes,
-          timestamp: new Date()
-        });
-        
-        console.log(`📝 Cambio detectado en ${currentWO.NumWO}:`, changes);
-      }
-    });
+  setPendingChanges(newPendingChanges);
+  setHasPendingChanges(newPendingChanges.size > 0);
 
-    setPendingChanges(newPendingChanges);
-    setHasPendingChanges(newPendingChanges.size > 0);
-
-    console.log(`✅ Total cambios pendientes: ${newPendingChanges.size}`);
-  }, [originalFabricaciones, detectChanges]);
+  console.log(`✅ Total cambios pendientes: ${newPendingChanges.size}`);
+}, [originalFabricaciones, detectChanges]);
 
   const savePendingChanges = useCallback(async () => {
     if (pendingChanges.size === 0) {

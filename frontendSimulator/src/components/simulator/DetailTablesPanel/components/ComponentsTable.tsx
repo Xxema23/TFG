@@ -1,4 +1,4 @@
-// components/ComponentsTable.tsx - VERSIÓN OPTIMIZADA
+// components/ComponentsTable.tsx - VERSIÓN OPTIMIZADA CON REACT.MEMO
 import React, { useMemo } from 'react';
 
 interface ComponentsTableProps {
@@ -27,7 +27,59 @@ interface ComponentsTableProps {
   isLoading?: boolean;
 }
 
-export const ComponentsTable: React.FC<ComponentsTableProps> = ({
+// ✅ FUNCIÓN DE COMPARACIÓN PERSONALIZADA PARA REACT.MEMO
+const arePropsEqual = (
+  prevProps: ComponentsTableProps, 
+  nextProps: ComponentsTableProps
+): boolean => {
+  // 1. Comparar arrays de work orders por longitud y contenido
+  if (prevProps.workOrders.length !== nextProps.workOrders.length) {
+    return false;
+  }
+  
+  // 2. Comparar componentes disponibles (array de strings)
+  if (prevProps.availableComponents.length !== nextProps.availableComponents.length) {
+    return false;
+  }
+  if (prevProps.availableComponents.join(',') !== nextProps.availableComponents.join(',')) {
+    return false;
+  }
+  
+  // 3. Comparar componentAvailability por referencia (ya viene memoizado del padre)
+  if (prevProps.componentAvailability !== nextProps.componentAvailability) {
+    return false;
+  }
+  
+  // 4. Comparar estados de UI
+  if (prevProps.hoveredRowId !== nextProps.hoveredRowId) {
+    return false;
+  }
+  
+  // 5. Comparar selectedRows (Set) por tamaño y contenido
+  if (prevProps.selectedRows.size !== nextProps.selectedRows.size) {
+    return false;
+  }
+  
+  // 6. Comparar drag states
+  if (prevProps.isDragging !== nextProps.isDragging) {
+    return false;
+  }
+  if (prevProps.draggedOverWO !== nextProps.draggedOverWO) {
+    return false;
+  }
+  
+  // 7. Loading state
+  if (prevProps.isLoading !== nextProps.isLoading) {
+    return false;
+  }
+  
+  // 8. Callbacks y refs no necesitan comparación (siempre estables)
+  
+  // Si todo es igual, NO re-renderizar
+  return true;
+};
+
+const ComponentsTableComponent: React.FC<ComponentsTableProps> = ({
   workOrders,
   availableComponents,
   componentAvailability,
@@ -298,5 +350,8 @@ export const ComponentsTable: React.FC<ComponentsTableProps> = ({
     </table>
   );
 };
+
+// ✅ EXPORTAR COMPONENTE MEMOIZADO
+export const ComponentsTable = React.memo(ComponentsTableComponent, arePropsEqual);
 
 export default ComponentsTable;

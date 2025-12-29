@@ -3,6 +3,27 @@ import { IComponenteDisponibilidad, ComponenteDisponibilidadParams } from '../in
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
+// ✅ CACHÉ DE CÁLCULOS SECUENCIALES
+interface CacheEntry {
+  signature: string;
+  result: IComponenteDisponibilidad[];
+  timestamp: number;
+}
+
+const calculoCache = new Map<string, CacheEntry>();
+const CACHE_TTL = 30000; // 30 segundos
+
+// Limpiar caché expirado cada minuto
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of calculoCache.entries()) {
+    if (now - entry.timestamp > CACHE_TTL) {
+      calculoCache.delete(key);
+      console.log('🗑️ [Cache] Entrada expirada eliminada:', key.substring(0, 50) + '...');
+    }
+  }
+}, 60000);
+
 /**
  * Obtiene la disponibilidad de componentes para las WOs especificadas
  * 
@@ -47,7 +68,7 @@ export const getComponentesDisponibilidad = async (
 };
 
 /**
- * ✅ NUEVA FUNCIÓN: Calcula consumo secuencial por línea
+ * ✅ OPTIMIZADO: Calcula consumo secuencial por línea CON CACHÉ
  * 
  * @param componentes - Array de componentes desde la API
  * @param workOrders - Work orders ordenadas visualmente (de arriba a abajo)
@@ -58,12 +79,26 @@ export const calcularConsumoSecuencial = (
   workOrders: { numWO: string; linea: string }[]
 ): IComponenteDisponibilidad[] => {
   
+  // ✅ CREAR SIGNATURE DEL CÁLCULO
+  const signature = `${componentes.length}-${workOrders.map(w => `${w.numWO}:${w.linea}`).join('|')}`;
+  
+  // ✅ VERIFICAR CACHÉ
+  const cached = calculoCache.get(signature);
+  if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+    console.log('⚡ [calcularConsumoSecuencial] Usando CACHÉ:', {
+      componentes: cached.result.length,
+      edad: Math.round((Date.now() - cached.timestamp) / 1000) + 's',
+      signaturePreview: signature.substring(0, 50) + '...'
+    });
+    return cached.result;
+  }
+  
   console.log('🔢 [calcularConsumoSecuencial] INICIO:', {
     totalComponentes: componentes.length,
     totalWOs: workOrders.length
   });
 
-  // ✅ NUEVO: Eliminar duplicados por WO + item_code
+  // ✅ Eliminar duplicados por WO + item_code
   const componentesUnicos = componentes.filter((comp, index, self) => 
     index === self.findIndex((c) => 
       c.wo === comp.wo && c.item_code === comp.item_code
@@ -120,7 +155,9 @@ export const calcularConsumoSecuencial = (
     wosEnLinea.forEach((woNumero, indexEnLinea) => {
       const componentesDeWO = componentesUnicos.filter(c => c.wo === woNumero);
       
-      console.log(`  🔧 [WO ${indexEnLinea + 1}/${wosEnLinea.length}] ${woNumero}: ${componentesDeWO.length} componentes`);
+      if (componentesDeWO.length > 0) {
+        console.log(`  🔧 [WO ${indexEnLinea + 1}/${wosEnLinea.length}] ${woNumero}: ${componentesDeWO.length} componentes`);
+      }
       
       componentesDeWO.forEach(comp => {
         const stockActual = stockPorComponente.get(comp.item_code) || 0;
@@ -162,6 +199,15 @@ export const calcularConsumoSecuencial = (
     }))
   });
 
+  // ✅ GUARDAR EN CACHÉ
+  calculoCache.set(signature, {
+    signature,
+    result: componentesActualizados,
+    timestamp: Date.now()
+  });
+  
+  console.log('💾 [Cache] Resultado guardado. Tamaño caché:', calculoCache.size);
+
   return componentesActualizados;
 };
 
@@ -176,7 +222,7 @@ export const calcularConsumoSecuencial = (
  */
 export const transformComponentesData = (
   componentes: IComponenteDisponibilidad[],
-  filteredWOs?: string[] // ✅ NUEVO parámetro opcional
+  filteredWOs?: string[] // ✅ Parámetro opcional
 ): {
   availableComponents: string[];
   componentAvailability: Record<string, Record<string, { 
@@ -189,7 +235,7 @@ export const transformComponentesData = (
 } => {
   console.log('🔄 [ComponentesService] Transformando datos:', componentes.length, 'registros');
   
-  // ✅ NUEVO: Filtrar componentes por WOs visibles (si se proporciona filtro)
+  // ✅ Filtrar componentes por WOs visibles (si se proporciona filtro)
   const componentesFiltrados = filteredWOs && filteredWOs.length > 0
     ? componentes.filter(comp => filteredWOs.includes(comp.wo))
     : componentes;

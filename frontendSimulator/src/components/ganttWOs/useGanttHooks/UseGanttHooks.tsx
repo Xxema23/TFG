@@ -257,7 +257,8 @@ export const recalculateAffectedWorkOrders = (
   return allWorkOrders;
 };
 
-export const useGanttHooks = () => {
+// ✅ OPTIMIZACIÓN: Recibir filteredWorkOrders como parámetro
+export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
   const { 
     fabricaciones: fabricacionesFromContext,
     onGanttOrdersChanged,
@@ -291,7 +292,6 @@ export const useGanttHooks = () => {
     workingDaysRef.current = workingDays;
   }, [workingDays]);
 
-  // ✅ CAMBIO CRÍTICO: Pasar dataRef al hook
   const {
     selectedWOs,
     setSelectedWOs,
@@ -308,12 +308,18 @@ export const useGanttHooks = () => {
     reorderSequencesInDay
   } = useWorkOrderHandlers(data, setData, workingDays, convertWeeklyToDaily, dataRef);
 
+  // ✅ OPTIMIZACIÓN: Usar filteredWorkOrders si está disponible
   useEffect(() => {
     if (isRecalculatingRef.current) {
       return;
     }
 
-    if (fabricacionesFromContext.length > 0 && workingDays.length > 0) {
+    // ✅ NUEVO: Usar filteredWorkOrders si está disponible, sino usar contexto completo
+    const dataSource = filteredWorkOrders && filteredWorkOrders.length > 0 
+      ? filteredWorkOrders 
+      : fabricacionesFromContext;
+
+    if (dataSource.length > 0 && workingDays.length > 0) {
       const now = Date.now();
       if (now - lastSyncTimestampRef.current < 100) {
         return;
@@ -321,9 +327,14 @@ export const useGanttHooks = () => {
       
       lastSyncTimestampRef.current = now;
       
-      console.log('🔄 [useGanttHooks] Sincronizando desde contexto...', fabricacionesFromContext.length);
+      console.log('🔄 [useGanttHooks] Sincronizando desde contexto...', {
+        total: fabricacionesFromContext.length,
+        filtradas: filteredWorkOrders?.length || 0,
+        procesando: dataSource.length
+      });
       
-      const adjustedWorkOrders = fabricacionesFromContext.map((wo) => {
+      // ✅ OPTIMIZADO: Solo procesar las WOs necesarias
+      const adjustedWorkOrders = dataSource.map((wo) => {
         const formattedDate = new Date(wo.Fch_Objetivo).toISOString().split("T")[0];
         if (!workingDays.includes(formattedDate)) {
           const newStartDay = workingDays.find(day => new Date(day) >= new Date(formattedDate)) || workingDays[0];
@@ -359,7 +370,7 @@ export const useGanttHooks = () => {
         };
       });
     }
-  }, [fabricacionesFromContext, workingDays, setData, lastUpdated]);
+  }, [fabricacionesFromContext, workingDays, setData, lastUpdated, filteredWorkOrders]);
 
   const saveChanges = useCallback(async (): Promise<void> => {
     return Promise.resolve();
@@ -381,7 +392,6 @@ export const useGanttHooks = () => {
     (info: DropInfo) => {
       console.log('🎯🎯🎯 DropMonitor recibió:', info);
       
-      // ✅ CRÍTICO: Si hay insertBeforeWO, obtener su día REAL
       let correctedDay = info.day;
       
       if (info.insertBeforeWO && dataRef.current) {
@@ -505,14 +515,11 @@ export const useGanttHooks = () => {
         console.log('🔄 [useGanttHooks] Capacity guardada, recargando datos y recalculando...');
         
         try {
-          // 1. Recargar datos desde BD
           await refetch();
           console.log('✅ [useGanttHooks] Datos recargados desde BD');
           
-          // 2. Esperar a que los datos se actualicen en el contexto
           await new Promise(resolve => setTimeout(resolve, 500));
           
-          // 3. ✅ CRÍTICO: Forzar recálculo con las capacidades afectadas
           if (dataRef.current && dataRef.current.workOrders && dataRef.current.capacity) {
             console.log('🎯 [useGanttHooks] Iniciando recálculo de capacity...');
             

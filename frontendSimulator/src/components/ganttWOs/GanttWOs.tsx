@@ -100,6 +100,7 @@ const GanttWOs: React.FC<GanttWOsProps> = ({
 }) => {
   const { onGanttOrdersChanged } = useFabricacionesContext();
 
+  // ✅ OPTIMIZACIÓN: Pasar filteredWorkOrders a useGanttHooks
   const {
     data,
     zoomLevel,
@@ -112,9 +113,8 @@ const GanttWOs: React.FC<GanttWOsProps> = ({
     isSaving,
     selectedWOs,
     setSelectedWOs,
-  } = useGanttHooks();
+  } = useGanttHooks(filteredWorkOrders);
 
-  // ✅ NUEVO: Escuchar eventos de cambios en el Gantt
   useEffect(() => {
     const handleGanttUpdate = (event: CustomEvent) => {
       console.log('📢 [GanttWOs] Recibido evento gantt-workorders-updated:', event.detail.workOrders.length);

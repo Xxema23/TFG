@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+// components/EquipmentTable.tsx - VERSIÓN COMPLETAMENTE OPTIMIZADA CON REACT.MEMO
+import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { DateEditor } from './DateEditor';
 import { getRowClasses, formatCurrency } from '../utils/TableHelpers';
@@ -48,7 +49,8 @@ interface EquipmentTableProps {
   onReorderInTable?: (draggedNumWOs: string[], targetNumWO: string) => void;
 }
 
-const EquipmentRow: React.FC<{
+// ✅ OPTIMIZACIÓN CRÍTICA 1: React.memo para EquipmentRow
+const EquipmentRow = memo<{
   wo: WorkOrder;
   woId: string;
   index: number;
@@ -67,7 +69,7 @@ const EquipmentRow: React.FC<{
   getPaletInfo: (wo: WorkOrder) => string;
   onDrop: (draggedNumWOs: string[], targetNumWO: string) => void;
   workOrdersMap: Record<string, WorkOrder>;
-}> = ({
+}>(({
   wo,
   woId,
   index,
@@ -209,9 +211,59 @@ const EquipmentRow: React.FC<{
       </td>
     </tr>
   );
+}, (prevProps, nextProps) => {
+  // ✅ OPTIMIZACIÓN: Comparación personalizada para evitar re-renders innecesarios
+  return (
+    prevProps.woId === nextProps.woId &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.hoveredRowId === nextProps.hoveredRowId &&
+    prevProps.isUpdating === nextProps.isUpdating &&
+    prevProps.editingWO === nextProps.editingWO &&
+    prevProps.newDate === nextProps.newDate &&
+    prevProps.wo.fchObjetivo === nextProps.wo.fchObjetivo &&
+    prevProps.wo.secuencia === nextProps.wo.secuencia &&
+    prevProps.selectedRows.size === nextProps.selectedRows.size
+  );
+});
+
+EquipmentRow.displayName = 'EquipmentRow';
+
+// ✅ OPTIMIZACIÓN CRÍTICA 2: Función de comparación para el componente principal
+const arePropsEqual = (
+  prevProps: EquipmentTableProps,
+  nextProps: EquipmentTableProps
+): boolean => {
+  // 1. Comparar arrays por longitud y contenido
+  if (prevProps.filteredWOIds.length !== nextProps.filteredWOIds.length) {
+    return false;
+  }
+  if (prevProps.filteredWOIds.join(',') !== nextProps.filteredWOIds.join(',')) {
+    return false;
+  }
+
+  // 2. Comparar workOrders por longitud
+  if (prevProps.workOrders.length !== nextProps.workOrders.length) {
+    return false;
+  }
+
+  // 3. Comparar estados de UI
+  if (prevProps.hoveredRowId !== nextProps.hoveredRowId) {
+    return false;
+  }
+
+  // 4. Comparar selectedRows por tamaño
+  if (prevProps.selectedRows.size !== nextProps.selectedRows.size) {
+    return false;
+  }
+
+  // 5. Callbacks y refetchFabricaciones no necesitan comparación (siempre estables)
+
+  // Si todo es igual, NO re-renderizar
+  return true;
 };
 
-export const EquipmentTable: React.FC<EquipmentTableProps> = ({
+// ✅ COMPONENTE PRINCIPAL CON TODA LA LÓGICA
+const EquipmentTableComponent: React.FC<EquipmentTableProps> = ({
   filteredWOIds,
   workOrders,
   refetchFabricaciones,
@@ -222,26 +274,36 @@ export const EquipmentTable: React.FC<EquipmentTableProps> = ({
   onWorkOrderUpdated,
   onReorderInTable
 }) => {
+  const [isUpdating, setIsUpdating] = useState<Set<string>>(new Set());
+  const [editingWO, setEditingWO] = useState<string | null>(null);
+  const [newDate, setNewDate] = useState<string>('');
   const { updateSingleFabricacion } = useFabricacionesContext();
 
-  const [editingWO, setEditingWO] = useState<string | null>(null);
-  const [newDate, setNewDate] = useState('');
-  const [isUpdating, setIsUpdating] = useState<Set<string>>(new Set());
+  console.log('📋 [EquipmentTable] Análisis COMPLETO antes de renderizar:', {
+    filteredWOIds: filteredWOIds.length,
+    workOrders: workOrders.length,
+    todasLasFechas: [...new Set(workOrders.map(wo => wo.fchObjetivo))],
+    distribucionPorFecha: workOrders.reduce((acc, wo) => {
+      acc[wo.fchObjetivo] = (acc[wo.fchObjetivo] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>),
+    primerasFechas: [...new Set(workOrders.map(wo => wo.fchObjetivo))].slice(0, 5),
+    hoveredRowId,
+    selectedRows: selectedRows.size
+  });
 
+  // ✅ OPTIMIZACIÓN: useMemo para workOrdersMap
   const workOrdersMap = useMemo(() => {
     const map: Record<string, WorkOrder> = {};
-    
-    if (workOrders && Array.isArray(workOrders)) {
-      workOrders.forEach(wo => {
-        if (wo && wo.id) {
-          map[wo.id] = wo;
-        }
-      });
-    }
-    
+    workOrders.forEach(wo => {
+      if (wo && wo.id) {
+        map[wo.id] = wo;
+      }
+    });
     return map;
   }, [workOrders]);
 
+  // ✅ OPTIMIZACIÓN: useCallback para updateWorkOrderField
   const updateWorkOrderField = useCallback(async (
     woId: string,
     field: string,
@@ -293,6 +355,7 @@ export const EquipmentTable: React.FC<EquipmentTableProps> = ({
     }
   }, [onWorkOrderUpdated, workOrdersMap, updateSingleFabricacion]);
 
+  // ✅ OPTIMIZACIÓN: useCallback para todos los handlers
   const startEditing = useCallback((woId: string, currentDate: string, e: React.MouseEvent): void => {
     e.stopPropagation();
     setEditingWO(woId);
@@ -376,33 +439,8 @@ export const EquipmentTable: React.FC<EquipmentTableProps> = ({
     );
   }
 
-  // 🆕 LOG CRÍTICO: Ver todas las fechas que se van a renderizar
-  console.log('📋 [EquipmentTable] Análisis COMPLETO antes de renderizar:', {
-    filteredWOIds: filteredWOIds.length,
-    workOrders: workOrders.length,
-    todasLasFechas: Array.from(new Set(workOrders.map(w => w.fchObjetivo?.split('T')[0] || w.fchObjetivo))).sort(),
-    distribucionPorFecha: workOrders.reduce((acc, w) => {
-      const fecha = w.fchObjetivo?.split('T')[0] || w.fchObjetivo;
-      acc[fecha] = (acc[fecha] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>),
-    primerasFechas: workOrders.slice(0, 5).map(w => ({
-      NumWO: w.numWO,
-      Fecha: w.fchObjetivo,
-      Seq: w.secuencia
-    })),
-    ultimasFechas: workOrders.slice(-5).map(w => ({
-      NumWO: w.numWO,
-      Fecha: w.fchObjetivo,
-      Seq: w.secuencia
-    })),
-    buscarWO25052658: workOrders.find(w => w.numWO === '25052658'),
-    buscarWO25033630: workOrders.find(w => w.numWO === '25033630')
-  });
-
   return (
     <>
-      {/* ✅ SIN h-[calc(...)] - El padre ya maneja el tamaño con flex-1 */}
       <table
         id="left-table"
         className="min-w-full border-collapse table-fixed"
@@ -486,5 +524,8 @@ export const EquipmentTable: React.FC<EquipmentTableProps> = ({
     </>
   );
 };
+
+// ✅ EXPORTAR COMPONENTE MEMOIZADO CON COMPARACIÓN PERSONALIZADA
+export const EquipmentTable = React.memo(EquipmentTableComponent, arePropsEqual);
 
 export default EquipmentTable;
