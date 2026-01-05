@@ -49,10 +49,9 @@ type FilterPanelProps = {
   onDefaultLineChange?: (line: string) => void;
   availableLines?: string[]; 
   allWorkOrders?: any[];
-  filterOptions?: FilterOptions; // ✅ NUEVO: Recibir opciones desde el componente padre
+  filterOptions?: FilterOptions;
 };
 
-// ✅ Definir valores iniciales seguros para los filtros
 const createSafeFilterValues = (filterValues: Partial<FilterValues>): FilterValues => {
   return {
     linea: Array.isArray(filterValues.linea) ? filterValues.linea : [],
@@ -77,9 +76,8 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
   onDefaultLineChange = () => {},
   availableLines = [],
   allWorkOrders = [],
-  filterOptions: providedFilterOptions // ✅ NUEVO: Opciones proporcionadas por el padre
+  filterOptions: providedFilterOptions
 }) => {
-  // ✅ CORREGIDO: Asegurarnos de que filterValues tiene todos los arrays inicializados
   const filterValues = useMemo(() => 
     createSafeFilterValues(rawFilterValues)
   , [rawFilterValues]);
@@ -88,27 +86,14 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
   const [searchText, setSearchText] = useState<string>('');
   const debouncedSearchText = useDebouncedValue(searchText, 300);
 
-  // Log renderizados para depuración
-  console.log('🔄 FilterPanel renderizado', { 
-    filterValuesLineas: filterValues.linea,
-    defaultLineFilter,
-    workOrdersCount: workOrders.length,
-    activeTab,
-    providedOptions: !!providedFilterOptions
-  });
-
-  // ✅ CORREGIDO: Usar las opciones proporcionadas por el padre o generar como fallback
   const filterOptions = useMemo(() => {
-    // Si el padre proporciona las opciones, usarlas directamente
     if (providedFilterOptions) {
-      console.log('📊 Usando opciones proporcionadas por el padre');
       return {
         ...providedFilterOptions,
         linea: availableLines.length > 0 ? availableLines : providedFilterOptions.linea
       };
     }
 
-    // Fallback: generar opciones localmente (código original)
     try {
       const safeAllWorkOrders = Array.isArray(allWorkOrders) 
         ? allWorkOrders.filter(wo => wo && typeof wo === 'object' && typeof wo.numWO !== 'undefined')
@@ -118,7 +103,6 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         ? workOrders.filter(wo => wo && typeof wo === 'object' && typeof wo.numWO !== 'undefined')
         : [];
 
-      // Obtener todas las líneas disponibles
       let allAvailableLines;
       if (availableLines && availableLines.length > 0) {
         allAvailableLines = availableLines;
@@ -136,7 +120,6 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         allAvailableLines = [...new Set(lineas)].sort();
       }
 
-      // Si no hay work orders filtrados, usar solo líneas disponibles
       if (safeWorkOrders.length === 0) {
         return {
           linea: allAvailableLines,
@@ -169,12 +152,6 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         proveedor: extractUniqueValues('proveedor') || []
       };
       
-      console.log('📊 Opciones de filtro generadas (fallback):', {
-        lineaCount: result.linea.length,
-        numWOCount: result.numWO.length,
-        equipoCount: result.equipo.length
-      });
-      
       return result;
     } catch (error) {
       console.error('❌ Error al generar opciones de filtros:', error);
@@ -191,43 +168,26 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     }
   }, [providedFilterOptions, availableLines, allWorkOrders, workOrders]);
 
-  // ✅ CORREGIDO: Asegurarnos de que currentValues siempre es un array válido
   const toggleFilterValue = useCallback((type: keyof FilterValues, value: string) => {
     try {
-      console.log(`🔍 Toggling filter: ${type}="${value}"`);
-      
-      // ✅ CORREGIDO: Crear copia segura de los filtros con arrays inicializados
       const newFilters = createSafeFilterValues(filterValues);
       
       if (type === 'fchObjetivo') {
         newFilters[type] = value || null;
       } else {
-        // ✅ CORREGIDO: Asegurarnos de que currentValues siempre sea un array
         const currentValues = Array.isArray(newFilters[type]) 
           ? newFilters[type] as string[] 
           : [];
         
         const isSelected = currentValues.includes(value);
         
-        // Actualizar el array de valores seleccionados
         if (isSelected) {
           newFilters[type] = currentValues.filter(v => v !== value);
-          console.log(`🔍 Removiendo ${value} de ${type}`);
         } else {
           newFilters[type] = [...currentValues, value];
-          console.log(`🔍 Añadiendo ${value} a ${type}`);
-        }
-        
-        // Si estamos en la pestaña de línea, NO actualizar la línea predeterminada automáticamente
-        // La línea predeterminada solo se actualiza cuando se limpia el filtro
-        if (type === 'linea') {
-          console.log(`🔍 Filtro de línea cambiado, manteniendo línea predeterminada: ${defaultLineFilter}`);
-          // No cambiar la línea predeterminada aquí
         }
       }
       
-      // CRUCIAL: Aplicar los filtros a través del callback proporcionado
-      console.log(`🔍 Aplicando nuevos filtros:`, newFilters);
       onFilterChange(newFilters);
       
     } catch (error) {
@@ -239,18 +199,9 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     if (activeTab === 'fchObjetivo') return;
     
     try {
-      console.log(`🔍 Seleccionando todas las opciones en: ${activeTab}`);
-      
-      // ✅ CORREGIDO: Crear copia segura de los filtros
       const newFilters = createSafeFilterValues(filterValues);
       newFilters[activeTab as keyof FilterOptions] = [...filterOptions[activeTab as keyof FilterOptions]];
       
-      // Si estamos seleccionando todas las líneas, podemos mantener la predeterminada
-      if (activeTab === 'linea' && defaultLineFilter && newFilters.linea.includes(defaultLineFilter)) {
-        console.log(`🏠 Manteniendo línea predeterminada: ${defaultLineFilter}`);
-      }
-      
-      console.log(`🔍 Nuevos filtros después de Seleccionar Todos:`, newFilters);
       onFilterChange(newFilters);
     } catch (error) {
       console.error('❌ Error al seleccionar todos:', error);
@@ -259,9 +210,6 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
 
   const selectNone = useCallback(() => {
     try {
-      console.log(`🔍 Deseleccionando todas las opciones en: ${activeTab}`);
-      
-      // ✅ CORREGIDO: Crear copia segura de los filtros
       const newFilters = createSafeFilterValues(filterValues);
       
       if (activeTab === 'fchObjetivo') {
@@ -270,19 +218,16 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         newFilters[activeTab as keyof FilterOptions] = [];
       }
       
-      console.log(`🔍 Nuevos filtros después de Seleccionar Ninguno:`, newFilters);
       onFilterChange(newFilters);
     } catch (error) {
       console.error('❌ Error al deseleccionar todos:', error);
     }
   }, [activeTab, filterValues, onFilterChange]);
 
-  // Limpiar búsqueda al cambiar de pestaña
   useEffect(() => {
     setSearchText('');
   }, [activeTab]);
 
-  // Filtrar opciones según el texto de búsqueda
   const filteredOptions = useMemo(() => {
     try {
       if (activeTab === 'fchObjetivo') return [];
@@ -294,8 +239,6 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         String(option).toLowerCase().includes(debouncedSearchText.toLowerCase())
       );
       
-      console.log(`🔍 Opciones filtradas por búsqueda: ${filtered.length}/${options.length} para "${debouncedSearchText}"`);
-      
       return filtered;
     } catch (error) {
       console.error('❌ Error al filtrar opciones:', error);
@@ -303,7 +246,6 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     }
   }, [filterOptions, activeTab, debouncedSearchText]);
 
-  // Renderizar las opciones del filtro activo
   const renderFilterOptions = () => {
     if (activeTab === 'fchObjetivo') {
       return (
@@ -370,7 +312,6 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     );
   };
 
-  // ✅ NUEVO: Pestañas con diseño mejorado para mostrar todos los nombres
   const filterTabs = [
     { key: 'linea', label: 'Línea' },
     { key: 'numWO', label: 'NumWO' },
@@ -383,7 +324,6 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     { key: 'fchObjetivo', label: 'Fecha' }
   ];
 
-  // Contar filtros aplicados
   const appliedFiltersCount = useMemo(() => {
     return Object.entries(filterValues).reduce((count, [key, values]) => {
       if (Array.isArray(values) && values.length > 0) return count + 1;
@@ -394,7 +334,6 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
 
   return (
     <div className="h-full flex flex-col bg-white">
-      {/* Header */}
       <div className="p-4 border-b bg-gray-50 flex-shrink-0">
         <div className="flex justify-between items-center">
           <h3 className="font-bold text-gray-800">FILTROS</h3>
@@ -418,7 +357,6 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         )}
       </div>
 
-      {/* ✅ MEJORADO: Pestañas en grid para mostrar todas a la vez */}
       <div className="border-b bg-gray-50 flex-shrink-0 p-2">
         <div className="grid grid-cols-3 gap-1">
           {filterTabs.map(tab => {
@@ -454,7 +392,6 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         </div>
       </div>
 
-      {/* Búsqueda */}
       {activeTab !== 'fchObjetivo' && (
         <div className="p-3 border-b flex-shrink-0">
           <div className="relative">
@@ -482,12 +419,10 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         </div>
       )}
 
-      {/* Opciones del filtro activo */}
       <div className="flex-1 overflow-hidden">
         {renderFilterOptions()}
       </div>
 
-      {/* Resumen de filtros aplicados */}
       <div className="p-3 border-t bg-gray-50 flex-shrink-0 max-h-32 overflow-y-auto">
         <div className="text-xs font-medium text-gray-700 mb-2">
           Filtros aplicados ({appliedFiltersCount}):

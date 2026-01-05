@@ -1,4 +1,4 @@
-// components/ComponentsTable.tsx - VERSIÓN OPTIMIZADA CON REACT.MEMO
+// components/ComponentsTable.tsx - VERSIÓN OPTIMIZADA SIN LOGS DE RENDER
 import React, { useMemo } from 'react';
 
 interface ComponentsTableProps {
@@ -32,12 +32,10 @@ const arePropsEqual = (
   prevProps: ComponentsTableProps, 
   nextProps: ComponentsTableProps
 ): boolean => {
-  // 1. Comparar arrays de work orders por longitud y contenido
   if (prevProps.workOrders.length !== nextProps.workOrders.length) {
     return false;
   }
   
-  // 2. Comparar componentes disponibles (array de strings)
   if (prevProps.availableComponents.length !== nextProps.availableComponents.length) {
     return false;
   }
@@ -45,22 +43,18 @@ const arePropsEqual = (
     return false;
   }
   
-  // 3. Comparar componentAvailability por referencia (ya viene memoizado del padre)
   if (prevProps.componentAvailability !== nextProps.componentAvailability) {
     return false;
   }
   
-  // 4. Comparar estados de UI
   if (prevProps.hoveredRowId !== nextProps.hoveredRowId) {
     return false;
   }
   
-  // 5. Comparar selectedRows (Set) por tamaño y contenido
   if (prevProps.selectedRows.size !== nextProps.selectedRows.size) {
     return false;
   }
   
-  // 6. Comparar drag states
   if (prevProps.isDragging !== nextProps.isDragging) {
     return false;
   }
@@ -68,14 +62,10 @@ const arePropsEqual = (
     return false;
   }
   
-  // 7. Loading state
   if (prevProps.isLoading !== nextProps.isLoading) {
     return false;
   }
   
-  // 8. Callbacks y refs no necesitan comparación (siempre estables)
-  
-  // Si todo es igual, NO re-renderizar
   return true;
 };
 
@@ -99,11 +89,7 @@ const ComponentsTableComponent: React.FC<ComponentsTableProps> = ({
   isLoading = false
 }) => {
   
-  console.log('🎨 [ComponentsTable] Render:', {
-    workOrders: workOrders.length,
-    availableComponents: availableComponents.length,
-    selectedRows: selectedRows.size
-  });
+  // ❌ LOG ELIMINADO (estaba aquí línea 102)
   
   /**
    * ✅ FILTRO INTELIGENTE DE COLUMNAS
@@ -113,7 +99,7 @@ const ComponentsTableComponent: React.FC<ComponentsTableProps> = ({
   const filteredComponents = useMemo(() => {
     // Sin selección → todas las columnas (ya son top 10 por WO del backend)
     if (selectedRows.size === 0) {
-      console.log('📊 [filteredComponents] Sin selección → mostrar todas:', availableComponents.length);
+      // ❌ LOG ELIMINADO (estaba aquí línea 129)
       return availableComponents;
     }
 
@@ -154,11 +140,7 @@ const ComponentsTableComponent: React.FC<ComponentsTableProps> = ({
       return minA - minB;
     });
     
-    console.log('🔍 [filteredComponents] Seleccionadas:', {
-      wos: selectedRows.size,
-      componentes: sorted.length,
-      top5Críticos: sorted.slice(0, 5)
-    });
+    // ❌ LOG ELIMINADO (estaba aquí línea 162)
 
     return sorted;
   }, [selectedRows, workOrders, availableComponents, componentAvailability]);
@@ -273,7 +255,7 @@ const ComponentsTableComponent: React.FC<ComponentsTableProps> = ({
     );
   }
 
-  // ✅ TABLA PRINCIPAL - SIN BANNER AZUL ❌
+  // ✅ TABLA PRINCIPAL
   return (
     <table 
       id="right-table"

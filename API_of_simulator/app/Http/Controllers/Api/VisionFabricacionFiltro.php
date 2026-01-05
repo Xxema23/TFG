@@ -36,7 +36,7 @@ class VisionFabricacionFiltro extends Controller
                 'INSPECCION', 'RECEPCION', 'EXPEDICIONES', 
                 'VARIOS', 'ALMACEN', 'COMPRAS'
             ])
-            ->whereRaw("vf.fch_objetivo::timestamp >= CURRENT_DATE - INTERVAL '20 days'")
+            ->whereRaw("vf.fch_objetivo::timestamp >= CURRENT_DATE - INTERVAL '7 days'")
             ->whereRaw("vf.fch_objetivo::timestamp <= CURRENT_DATE + INTERVAL '365 days'")
             
             // 🆕 EXCLUIR FINES DE SEMANA (Sábado=6, Domingo=0)

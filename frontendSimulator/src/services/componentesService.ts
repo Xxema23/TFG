@@ -19,7 +19,7 @@ setInterval(() => {
   for (const [key, entry] of calculoCache.entries()) {
     if (now - entry.timestamp > CACHE_TTL) {
       calculoCache.delete(key);
-      console.log('🗑️ [Cache] Entrada expirada eliminada:', key.substring(0, 50) + '...');
+      // Log silenciado: console.log('🗑️ [Cache] Entrada expirada eliminada:', key.substring(0, 50) + '...');
     }
   }
 }, 60000);
@@ -34,7 +34,7 @@ export const getComponentesDisponibilidad = async (
   params: ComponenteDisponibilidadParams = {}
 ): Promise<IComponenteDisponibilidad[]> => {
   try {
-    console.log('🔍 [ComponentesService] Llamando API con params:', params);
+    // Log silenciado: console.log('🔍 [ComponentesService] Llamando API con params:', params);
     
     // Usar POST para enviar array de WOs (más seguro que GET con query params)
     const response = await axios.post<IComponenteDisponibilidad[]>(
@@ -45,12 +45,7 @@ export const getComponentesDisponibilidad = async (
       }
     );
     
-    console.log('✅ [ComponentesService] Datos recibidos:', {
-      total: response.data.length,
-      uniqueWOs: [...new Set(response.data.map(c => c.wo))].length,
-      uniqueItems: [...new Set(response.data.map(c => c.item_code))].length,
-      primeros5: response.data.slice(0, 5)
-    });
+    // Log silenciado: console.log('✅ [ComponentesService] Datos recibidos:', {...});
     
     return response.data;
     
@@ -85,18 +80,11 @@ export const calcularConsumoSecuencial = (
   // ✅ VERIFICAR CACHÉ
   const cached = calculoCache.get(signature);
   if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
-    console.log('⚡ [calcularConsumoSecuencial] Usando CACHÉ:', {
-      componentes: cached.result.length,
-      edad: Math.round((Date.now() - cached.timestamp) / 1000) + 's',
-      signaturePreview: signature.substring(0, 50) + '...'
-    });
+    // Log silenciado: console.log('⚡ [calcularConsumoSecuencial] Usando CACHÉ:', {...});
     return cached.result;
   }
   
-  console.log('🔢 [calcularConsumoSecuencial] INICIO:', {
-    totalComponentes: componentes.length,
-    totalWOs: workOrders.length
-  });
+  // Log silenciado: console.log('🔢 [calcularConsumoSecuencial] INICIO:', {...});
 
   // ✅ Eliminar duplicados por WO + item_code
   const componentesUnicos = componentes.filter((comp, index, self) => 
@@ -105,11 +93,7 @@ export const calcularConsumoSecuencial = (
     )
   );
 
-  console.log('🔍 [calcularConsumoSecuencial] Componentes únicos:', {
-    originales: componentes.length,
-    unicos: componentesUnicos.length,
-    eliminados: componentes.length - componentesUnicos.length
-  });
+  // Log silenciado: console.log('🔍 [calcularConsumoSecuencial] Componentes únicos:', {...});
 
   // 1. Agrupar WOs por línea (manteniendo el orden)
   const wosByLinea = new Map<string, string[]>();
@@ -121,19 +105,13 @@ export const calcularConsumoSecuencial = (
     wosByLinea.get(wo.linea)!.push(wo.numWO);
   });
 
-  console.log('📊 [calcularConsumoSecuencial] WOs por línea:', {
-    lineas: Array.from(wosByLinea.keys()),
-    distribucion: Array.from(wosByLinea.entries()).map(([linea, wos]) => ({
-      linea,
-      wos: wos.length
-    }))
-  });
+  // Log silenciado: console.log('📊 [calcularConsumoSecuencial] WOs por línea:', {...});
 
   // 2. Para cada línea, calcular consumo secuencial
   const componentesActualizados: IComponenteDisponibilidad[] = [];
 
   wosByLinea.forEach((wosEnLinea, linea) => {
-    console.log(`\n🏭 [Línea ${linea}] Procesando ${wosEnLinea.length} WOs...`);
+    // Log silenciado: console.log(`\n🏭 [Línea ${linea}] Procesando ${wosEnLinea.length} WOs...`);
     
     // Mapa de stock disponible por componente en esta línea
     // Inicialmente = stock_global
@@ -146,7 +124,7 @@ export const calcularConsumoSecuencial = (
       if (woInfo && woInfo.linea === linea) {
         if (!stockPorComponente.has(comp.item_code)) {
           stockPorComponente.set(comp.item_code, comp.stock_global);
-          console.log(`  📦 [${comp.item_code}] Stock inicial: ${comp.stock_global}`);
+          // Log silenciado: console.log(`  📦 [${comp.item_code}] Stock inicial: ${comp.stock_global}`);
         }
       }
     });
@@ -155,9 +133,7 @@ export const calcularConsumoSecuencial = (
     wosEnLinea.forEach((woNumero, indexEnLinea) => {
       const componentesDeWO = componentesUnicos.filter(c => c.wo === woNumero);
       
-      if (componentesDeWO.length > 0) {
-        console.log(`  🔧 [WO ${indexEnLinea + 1}/${wosEnLinea.length}] ${woNumero}: ${componentesDeWO.length} componentes`);
-      }
+      // Log silenciado: if (componentesDeWO.length > 0) { console.log(...); }
       
       componentesDeWO.forEach(comp => {
         const stockActual = stockPorComponente.get(comp.item_code) || 0;
@@ -166,7 +142,7 @@ export const calcularConsumoSecuencial = (
         // Calcular nuevo stock después del consumo
         const nuevoStock = stockActual - cantidadNecesaria;
         
-        console.log(`    - ${comp.item_code}: stock ${stockActual} - necesita ${cantidadNecesaria} = ${nuevoStock}`);
+        // Log silenciado: console.log(`    - ${comp.item_code}: stock ${stockActual} - necesita ${cantidadNecesaria} = ${nuevoStock}`);
         
         // Actualizar stock disponible en el mapa
         stockPorComponente.set(comp.item_code, nuevoStock);
@@ -188,16 +164,7 @@ export const calcularConsumoSecuencial = (
 
   componentesActualizados.push(...componentesSinLinea);
 
-  console.log('✅ [calcularConsumoSecuencial] COMPLETADO:', {
-    totalActualizados: componentesActualizados.length,
-    ejemplos: componentesActualizados.slice(0, 3).map(c => ({
-      wo: c.wo,
-      item: c.item_code,
-      stockGlobal: c.stock_global,
-      disponible: c.disponible,
-      necesita: c.req_quantity
-    }))
-  });
+  // Log silenciado: console.log('✅ [calcularConsumoSecuencial] COMPLETADO:', {...});
 
   // ✅ GUARDAR EN CACHÉ
   calculoCache.set(signature, {
@@ -206,7 +173,7 @@ export const calcularConsumoSecuencial = (
     timestamp: Date.now()
   });
   
-  console.log('💾 [Cache] Resultado guardado. Tamaño caché:', calculoCache.size);
+  // Log silenciado: console.log('💾 [Cache] Resultado guardado. Tamaño caché:', calculoCache.size);
 
   return componentesActualizados;
 };
@@ -233,18 +200,14 @@ export const transformComponentesData = (
     stock_global: number;
   }>>;
 } => {
-  console.log('🔄 [ComponentesService] Transformando datos:', componentes.length, 'registros');
+  // Log silenciado: console.log('🔄 [ComponentesService] Transformando datos:', componentes.length, 'registros');
   
   // ✅ Filtrar componentes por WOs visibles (si se proporciona filtro)
   const componentesFiltrados = filteredWOs && filteredWOs.length > 0
     ? componentes.filter(comp => filteredWOs.includes(comp.wo))
     : componentes;
   
-  console.log('🔍 [ComponentesService] Componentes después de filtro:', {
-    originales: componentes.length,
-    filtrados: componentesFiltrados.length,
-    wosVisibles: filteredWOs?.length || 'todas'
-  });
+  // Log silenciado: console.log('🔍 [ComponentesService] Componentes después de filtro:', {...});
   
   // 1. Extraer todos los item_codes únicos (columnas) SOLO de componentes filtrados
   const itemCodesSet = new Set<string>();
@@ -257,10 +220,7 @@ export const transformComponentesData = (
   
   const availableComponents = Array.from(itemCodesSet).sort();
   
-  console.log('📊 [ComponentesService] Item codes únicos (columnas):', {
-    total: availableComponents.length,
-    primeros10: availableComponents.slice(0, 10)
-  });
+  // Log silenciado: console.log('📊 [ComponentesService] Item codes únicos (columnas):', {...});
   
   // 2. Construir estructura matricial: WO -> item_code -> datos
   const componentAvailability: Record<string, Record<string, {
@@ -286,12 +246,7 @@ export const transformComponentesData = (
     };
   });
   
-  console.log('✅ [ComponentesService] Transformación completada:', {
-    wos: Object.keys(componentAvailability).length,
-    columnas: availableComponents.length,
-    ejemploWO: Object.keys(componentAvailability)[0],
-    componentesDeEjemplo: Object.keys(componentAvailability[Object.keys(componentAvailability)[0]] || {}).length
-  });
+  // Log silenciado: console.log('✅ [ComponentesService] Transformación completada:', {...});
   
   return {
     availableComponents,

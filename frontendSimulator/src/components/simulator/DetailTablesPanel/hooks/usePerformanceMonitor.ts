@@ -5,7 +5,6 @@ export const UsePerformanceMonitor = () => {
   const monitor = useRef(new PerformanceMonitor());
   
   useEffect(() => {
-    // Log stats periódicamente en desarrollo
     if (import.meta.env.DEV) {
       const interval = setInterval(() => {
         const stats = monitor.current.getAllStats();
@@ -14,7 +13,7 @@ export const UsePerformanceMonitor = () => {
           console.table(stats);
           console.groupEnd();
         }
-      }, 30000); // Cada 30 segundos
+      }, 30000);
       
       return () => clearInterval(interval);
     }

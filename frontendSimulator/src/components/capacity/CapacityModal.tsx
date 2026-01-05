@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useUniqueLines } from '../../hooks/UseUniqueLines';
 import { CapacityData } from '../../interfaces/Capacity';
-import { getCapacities } from '../../services/CapacityService';
+import { getCapacities } from '../../services/capacityService'; // ⬅️ Minúscula
 
 interface CapacityModalProps {
   isOpen?: boolean;
@@ -77,7 +77,7 @@ const CapacityModal: React.FC<CapacityModalProps> = ({
     return getWeeksInDateRange(pastDate, futureDate);
   }, []);
   
-  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
+  const [selectedYear, setSelectedYear] = useState<number>(2026);
   const [currentPage, setCurrentPage] = useState<number>(0);
   
   const visibleWeeks = useMemo(() => {

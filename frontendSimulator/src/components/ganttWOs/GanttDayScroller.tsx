@@ -39,13 +39,37 @@ const GanttDayScroller: React.FC<GanttDayScrollerProps> = ({
     return colors[numericValue % colors.length];
   }, []);
 
+  // ⬇️ FALLBACK solo si capacity está completamente vacía
+  const FALLBACK_CAPACITY = 1000000;
+
   const capacityByDay = useMemo(() => {
     const lineCapacity = capacity.filter(cap => cap.line === line || cap.line === "*");
     const capacityMap = new Map<string, number>();
     
+    console.log(`📊 [GanttDayScroller] Capacity para línea ${line}:`, {
+      totalCapacities: capacity.length,
+      lineCapacities: lineCapacity.length,
+      primeras3: lineCapacity.slice(0, 3).map(c => ({
+        date: c.date,
+        line: c.line,
+        capacity: c.capacity
+      }))
+    });
+    
     days.forEach((day) => {
       const customCapacity = lineCapacity.find((cap) => cap.date === day)?.capacity;
-      capacityMap.set(day, customCapacity || 1000);
+      
+      // Solo usar fallback si NO existe capacity para ese día
+      const finalCapacity = customCapacity !== undefined ? customCapacity : FALLBACK_CAPACITY;
+      capacityMap.set(day, finalCapacity);
+    });
+    
+    console.log(`🗺️ [GanttDayScroller] CapacityByDay generado:`, {
+      totalDays: days.length,
+      primeros3Days: days.slice(0, 3).map(day => ({
+        day,
+        capacity: capacityMap.get(day)
+      }))
     });
     
     return capacityMap;
@@ -94,7 +118,7 @@ const GanttDayScroller: React.FC<GanttDayScrollerProps> = ({
 
       while (remainingHours > 0 && endDayindex < days.length) {
         const currentDay = days[endDayindex];
-        const dailyCapacity = capacityByDay.get(currentDay) || 1000;
+        const dailyCapacity = capacityByDay.get(currentDay) || FALLBACK_CAPACITY;
         const usedCapacity = dayUsage.get(currentDay) || 0;
         const availableCapacity = dailyCapacity - usedCapacity;
 
@@ -130,6 +154,19 @@ const GanttDayScroller: React.FC<GanttDayScrollerProps> = ({
       });
     });
 
+    // ⬇️⬇️⬇️ LOG DETALLADO DE WIDTHS ⬇️⬇️⬇️
+    console.log(`🎨 [GanttDayScroller] Blocks generados:`, {
+      total: blocks.length,
+      primeros3: blocks.slice(0, 3).map(b => ({
+        NumWO: b.workOrder.NumWO,
+        width: b.width,
+        left: b.left,
+        horasWO: b.workOrder.horas_totales_de_la_wo,
+        startDay: days[b.startDay],
+        dailyCapacity: capacityByDay.get(days[b.startDay])
+      }))
+    });
+
     return blocks;
   }, [workOrders, days, capacityByDay, dayWidth, getColorForWO, normalizeFecha]);
 
@@ -162,18 +199,76 @@ const GanttDayScroller: React.FC<GanttDayScrollerProps> = ({
   );
 };
 
+// ⬇️⬇️⬇️ COMPARACIÓN MÁS ESTRICTA ⬇️⬇️⬇️
 export default React.memo(GanttDayScroller, (prevProps, nextProps) => {
-  return (
-    prevProps.line === nextProps.line &&
-    prevProps.zoomLevel === nextProps.zoomLevel &&
-    prevProps.days.length === nextProps.days.length &&
-    prevProps.workOrders.length === nextProps.workOrders.length &&
-    prevProps.capacity.length === nextProps.capacity.length &&
-    prevProps.selectedWOs.length === nextProps.selectedWOs.length &&
-    prevProps.workOrders.every((wo, index) => 
-      wo.NumWO === nextProps.workOrders[index]?.NumWO &&
-      wo.Fch_Objetivo === nextProps.workOrders[index]?.Fch_Objetivo &&
-      wo.Secuencia === nextProps.workOrders[index]?.Secuencia
-    )
-  );
+  // 1️⃣ Comparar length de capacity
+  if (prevProps.capacity.length !== nextProps.capacity.length) {
+    console.log('🔄 [React.memo] Capacity LENGTH cambió:', {
+      prev: prevProps.capacity.length,
+      next: nextProps.capacity.length
+    });
+    return false; // NO son iguales → RE-RENDER
+  }
+  
+  // 2️⃣ Comparar VALORES de capacity (sampling en 3 puntos)
+  if (prevProps.capacity.length > 0 && nextProps.capacity.length > 0) {
+    const indicesToCheck = [
+      0,
+      Math.floor(prevProps.capacity.length / 2),
+      prevProps.capacity.length - 1
+    ];
+    
+    for (const i of indicesToCheck) {
+      if (i < prevProps.capacity.length && i < nextProps.capacity.length) {
+        const prevCap = prevProps.capacity[i];
+        const nextCap = nextProps.capacity[i];
+        
+        if (prevCap.capacity !== nextCap.capacity || 
+            prevCap.date !== nextCap.date || 
+            prevCap.line !== nextCap.line) {
+          console.log('🔄 [React.memo] Capacity VALUE cambió en índice', i, ':', {
+            prev: { date: prevCap.date, line: prevCap.line, capacity: prevCap.capacity },
+            next: { date: nextCap.date, line: nextCap.line, capacity: nextCap.capacity }
+          });
+          return false; // Capacity cambió → RE-RENDER
+        }
+      }
+    }
+  }
+
+  // 3️⃣ Comparar otras props
+  const lineChanged = prevProps.line !== nextProps.line;
+  const zoomChanged = prevProps.zoomLevel !== nextProps.zoomLevel;
+  const daysChanged = prevProps.days.length !== nextProps.days.length;
+  const workOrdersChanged = prevProps.workOrders.length !== nextProps.workOrders.length;
+  const selectedChanged = prevProps.selectedWOs.length !== nextProps.selectedWOs.length;
+  
+  if (lineChanged || zoomChanged || daysChanged || workOrdersChanged || selectedChanged) {
+    console.log('🔄 [React.memo] Otras props cambiaron:', {
+      lineChanged,
+      zoomChanged,
+      daysChanged,
+      workOrdersChanged,
+      selectedChanged
+    });
+    return false; // Props cambiaron → RE-RENDER
+  }
+  
+  // 4️⃣ Comparación profunda de workOrders
+  const workOrdersEqual = prevProps.workOrders.length === nextProps.workOrders.length &&
+    prevProps.workOrders.every((wo, index) => {
+      const nextWO = nextProps.workOrders[index];
+      return nextWO && 
+             wo.NumWO === nextWO.NumWO &&
+             wo.Fch_Objetivo === nextWO.Fch_Objetivo &&
+             wo.Secuencia === nextWO.Secuencia;
+    });
+  
+  if (!workOrdersEqual) {
+    console.log('🔄 [React.memo] WorkOrders CONTENT cambió');
+    return false;
+  }
+  
+  // ✅ TODO IGUAL → NO RE-RENDER
+  return true;
 });

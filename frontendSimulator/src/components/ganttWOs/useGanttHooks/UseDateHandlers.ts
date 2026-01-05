@@ -1,6 +1,5 @@
 import { IFabricacionConHoras } from "../../../interfaces/IFabricacionConHoras";
 
-
 export const formatDateForAPI = (dateString: string): string => {
   try {
     const date = new Date(dateString);
@@ -46,14 +45,16 @@ export const formatDataForAPI = (data: Partial<IFabricacionConHoras>) => {
   }, {} as any);
 };
 
+// ⬇️⬇️⬇️ ARREGLADO: 7 días atrás + 30 adelante ⬇️⬇️⬇️
 export const generateInitialWorkingDays = (nonWorkingDates?: string[]): string[] => {
   const nonWorkingSet = new Set(nonWorkingDates || []);
   const today = new Date();
   const days: string[] = [];
 
+  // 7 días atrás
   let previousDate = new Date(today);
   let addedDays = 0;
-  while (addedDays < 20) {
+  while (addedDays < 7) {
     previousDate.setDate(previousDate.getDate() - 1);
     const dayOfWeek = previousDate.getDay();
     const dateStr = previousDate.toISOString().split("T")[0];
@@ -64,8 +65,9 @@ export const generateInitialWorkingDays = (nonWorkingDates?: string[]): string[]
     }
   }
 
+  // 30 días adelante (CAMBIADO de +1 año)
   const endDate = new Date(today);
-  endDate.setFullYear(today.getFullYear() + 1);
+  endDate.setDate(today.getDate() + 30);
 
   let currentDate = new Date(today);
   while (currentDate <= endDate) {

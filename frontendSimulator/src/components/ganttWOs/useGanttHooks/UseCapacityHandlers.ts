@@ -1,7 +1,13 @@
 import { useState, useCallback } from "react";
 import { Capacity, GanttData } from "./Types";
 import { CapacityData } from "../../../interfaces/Capacity";
-import { saveCapacities, getCapacities, deleteCapacity } from "../../../services/CapacityService";
+import { 
+  saveCapacities, 
+  getCapacities, 
+  deleteCapacities, // ⬅️ Cambiado de deleteCapacity a deleteCapacities
+  getBaseCapacities,
+  buildDailyCapacities
+} from "../../../services/capacityService"; // ⬅️ Cambiado de CapacityService a capacityService
 
 const DEFAULT_INITIAL_CAPACITY = 1000000;
 
@@ -20,6 +26,9 @@ export const useCapacityHandlers = (
 ) => {
   const [isCapacityModalOpen, setIsCapacityModalOpen] = useState(false);
 
+  // ============================================
+  // CONVERTIR CAPACIDADES SEMANALES A DIARIAS (LEGACY)
+  // ============================================
   const convertWeeklyToDaily = useCallback(
     (weeklyCapacities: CapacityData[], workingDaysArray: string[]): Capacity[] => {
       const dailyCapacities: Capacity[] = [];
@@ -61,13 +70,50 @@ export const useCapacityHandlers = (
     [data]
   );
 
+  // ============================================
+  // CARGAR CAPACIDADES CON LÓGICA HÍBRIDA
+  // ============================================
   const loadCapacitiesFromService = useCallback(async (scenarioId: number = 1): Promise<void> => {
     try {
-      const currentYear = new Date().getFullYear();
-      const capacities = await getCapacities(scenarioId, currentYear);
+      console.log('🔄 [loadCapacitiesFromService] Cargando con lógica HÍBRIDA...');
       
-      if (capacities.length > 0) {
-        const dailyCapacities = convertWeeklyToDaily(capacities, workingDays);
+      const currentYear = new Date().getFullYear();
+      const years = [currentYear - 1, currentYear, currentYear + 1];
+      
+      // 1. Cargar capacidades BASE
+      const baseCapacities = await getBaseCapacities(scenarioId);
+      console.log(`✅ Capacidades BASE: ${baseCapacities.length}`);
+      
+      // 2. Cargar capacidades SEMANALES de múltiples años
+      const allWeeklyCapacities = [];
+      for (const year of years) {
+        const yearCaps = await getCapacities(scenarioId, year);
+        console.log(`✅ Capacidades año ${year}: ${yearCaps.length}`);
+        allWeeklyCapacities.push(...yearCaps);
+      }
+      
+      // 3. Si hay capacidades BASE, usar lógica híbrida
+      if (baseCapacities.length > 0) {
+        const dailyCapacities = buildDailyCapacities(
+          baseCapacities,
+          allWeeklyCapacities,
+          workingDays
+        );
+        
+        console.log(`✅ Capacidades diarias (híbrido): ${dailyCapacities.length}`);
+        
+        setData(prevData => {
+          if (!prevData) return null;
+          return {
+            ...prevData,
+            capacity: dailyCapacities
+          };
+        });
+      } 
+      // 4. Si NO hay capacidades BASE, usar lógica legacy (solo semanales)
+      else if (allWeeklyCapacities.length > 0) {
+        console.log('⚠️ No hay capacidades BASE, usando solo semanales (legacy)');
+        const dailyCapacities = convertWeeklyToDaily(allWeeklyCapacities, workingDays);
         
         setData(prevData => {
           if (!prevData) return null;
@@ -78,77 +124,38 @@ export const useCapacityHandlers = (
         });
       }
     } catch (error) {
-      console.error("Error al cargar capacidades:", error);
+      console.error("❌ Error al cargar capacidades:", error);
     }
   }, [convertWeeklyToDaily, workingDays, setData]);
 
+  // ============================================
+  // GUARDAR CAPACIDADES (SOLO SEMANALES)
+  // ============================================
   const handleSaveCapacity = useCallback(
-    async (capacities: CapacityData[], deletions: { line: string; week: number; year: number }[] = []): Promise<{
+    async (
+      capacities: CapacityData[], 
+      deletions: { line: string; week: number; year: number }[] = []
+    ): Promise<{
       success: boolean;
       capacityChanges: CapacityData[];
     }> => {
       try {
         let saveResult = { success: true };
-        let deleteResults: any[] = [];
+        let deleteResult = { success: true };
 
+        // Guardar capacidades SEMANALES
         if (capacities.length > 0) {
           saveResult = await saveCapacities(1, capacities);
         }
 
+        // Eliminar capacidades SEMANALES (batch)
         if (deletions.length > 0) {
-          deleteResults = await Promise.all(
-            deletions.map(deletion => 
-              deleteCapacity(1, deletion.line, deletion.week, deletion.year)
-            )
-          );
+          deleteResult = await deleteCapacities(1, deletions);
         }
 
-        const deleteErrors = deleteResults.filter(result => !result.success);
-        
-        if (saveResult.success && deleteErrors.length === 0) {
-          const allCapacities = [...capacities];
-          const dailyCapacities = convertWeeklyToDaily(allCapacities, workingDays);
-          
-          setData(prevData => {
-            if (!prevData) return null;
-            
-            const capacitiesToRemove = new Set<string>();
-            deletions.forEach(deletion => {
-              workingDays.forEach(day => {
-                const date = new Date(day);
-                const year = date.getFullYear();
-                const week = getWeekNumber(date);
-                if (deletion.week === week && deletion.year === year) {
-                  capacitiesToRemove.add(`${deletion.line}-${day}`);
-                }
-              });
-            });
-
-            const existingCapacities = prevData.capacity.filter(cap => {
-              const shouldRemove = capacitiesToRemove.has(`${cap.line}-${cap.date}`);
-              const isBeingUpdated = capacities.some(newCap => {
-                const date = new Date(cap.date);
-                const year = date.getFullYear();
-                const week = getWeekNumber(date);
-                return newCap.line === cap.line && newCap.week === week && newCap.year === year;
-              });
-              return !shouldRemove && !isBeingUpdated;
-            });
-            
-            const restoredCapacities: Capacity[] = Array.from(capacitiesToRemove).map(key => {
-              const [line, date] = key.split('-');
-              return {
-                line,
-                date,
-                capacity: DEFAULT_INITIAL_CAPACITY
-              };
-            });
-            
-            return {
-              ...prevData,
-              capacity: [...existingCapacities, ...dailyCapacities, ...restoredCapacities]
-            };
-          });
+        if (saveResult.success && deleteResult.success) {
+          // Recargar capacidades con lógica híbrida
+          await loadCapacitiesFromService(1);
           
           setIsCapacityModalOpen(false);
           
@@ -157,24 +164,24 @@ export const useCapacityHandlers = (
           
           return {
             success: true,
-            capacityChanges: allCapacities
+            capacityChanges: capacities
           };
         } else {
-          console.error("Error en las operaciones:", { saveResult, deleteErrors });
+          console.error("❌ Error en las operaciones:", { saveResult, deleteResult });
           return {
             success: false,
             capacityChanges: []
           };
         }
       } catch (error) {
-        console.error("Error al procesar capacidades:", error);
+        console.error("❌ Error al procesar capacidades:", error);
         return {
           success: false,
           capacityChanges: []
         };
       }
     },
-    [convertWeeklyToDaily, workingDays, setData]
+    [loadCapacitiesFromService]
   );
 
   return {

@@ -1,4 +1,4 @@
-// components/EquipmentTable.tsx - VERSIÓN COMPLETAMENTE OPTIMIZADA CON REACT.MEMO
+// components/EquipmentTable.tsx - VERSIÓN OPTIMIZADA SIN LOGS DE RENDER
 import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { DateEditor } from './DateEditor';
@@ -233,32 +233,21 @@ const arePropsEqual = (
   prevProps: EquipmentTableProps,
   nextProps: EquipmentTableProps
 ): boolean => {
-  // 1. Comparar arrays por longitud y contenido
   if (prevProps.filteredWOIds.length !== nextProps.filteredWOIds.length) {
     return false;
   }
   if (prevProps.filteredWOIds.join(',') !== nextProps.filteredWOIds.join(',')) {
     return false;
   }
-
-  // 2. Comparar workOrders por longitud
   if (prevProps.workOrders.length !== nextProps.workOrders.length) {
     return false;
   }
-
-  // 3. Comparar estados de UI
   if (prevProps.hoveredRowId !== nextProps.hoveredRowId) {
     return false;
   }
-
-  // 4. Comparar selectedRows por tamaño
   if (prevProps.selectedRows.size !== nextProps.selectedRows.size) {
     return false;
   }
-
-  // 5. Callbacks y refetchFabricaciones no necesitan comparación (siempre estables)
-
-  // Si todo es igual, NO re-renderizar
   return true;
 };
 
@@ -279,20 +268,8 @@ const EquipmentTableComponent: React.FC<EquipmentTableProps> = ({
   const [newDate, setNewDate] = useState<string>('');
   const { updateSingleFabricacion } = useFabricacionesContext();
 
-  console.log('📋 [EquipmentTable] Análisis COMPLETO antes de renderizar:', {
-    filteredWOIds: filteredWOIds.length,
-    workOrders: workOrders.length,
-    todasLasFechas: [...new Set(workOrders.map(wo => wo.fchObjetivo))],
-    distribucionPorFecha: workOrders.reduce((acc, wo) => {
-      acc[wo.fchObjetivo] = (acc[wo.fchObjetivo] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>),
-    primerasFechas: [...new Set(workOrders.map(wo => wo.fchObjetivo))].slice(0, 5),
-    hoveredRowId,
-    selectedRows: selectedRows.size
-  });
+  // ❌ LOG ELIMINADO (estaba aquí)
 
-  // ✅ OPTIMIZACIÓN: useMemo para workOrdersMap
   const workOrdersMap = useMemo(() => {
     const map: Record<string, WorkOrder> = {};
     workOrders.forEach(wo => {
@@ -303,7 +280,6 @@ const EquipmentTableComponent: React.FC<EquipmentTableProps> = ({
     return map;
   }, [workOrders]);
 
-  // ✅ OPTIMIZACIÓN: useCallback para updateWorkOrderField
   const updateWorkOrderField = useCallback(async (
     woId: string,
     field: string,
@@ -355,7 +331,6 @@ const EquipmentTableComponent: React.FC<EquipmentTableProps> = ({
     }
   }, [onWorkOrderUpdated, workOrdersMap, updateSingleFabricacion]);
 
-  // ✅ OPTIMIZACIÓN: useCallback para todos los handlers
   const startEditing = useCallback((woId: string, currentDate: string, e: React.MouseEvent): void => {
     e.stopPropagation();
     setEditingWO(woId);

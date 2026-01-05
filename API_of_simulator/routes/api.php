@@ -16,6 +16,8 @@ use App\Http\Controllers\Api\FiltrosController;
 use App\Http\Controllers\Api\ColoresWoController;
 use App\Http\Controllers\Api\ColoresWoControllerDisponible;
 use App\Http\Controllers\Api\PaletFiltro;
+use App\Http\Controllers\CapacidadBaseController;
+use App\Http\Controllers\CapacidadSemanalController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -41,7 +43,6 @@ Route::get('/fabricaciones-con-horas', [VisionFabricacionFiltro::class, 'getFabr
 Route::put('/fabricaciones-con-horas/{wo}', [VisionFabricacionFiltro::class, 'updateFabricacion']);
 Route::put('/fabricaciones-con-horas/batch', [VisionFabricacionFiltro::class, 'updateFabricacionesBatch']);
 
-
 //Ruta para acceso al enpoint de filtros
 Route::get('/filtros', [FiltrosController::class, 'index']);
 
@@ -52,3 +53,16 @@ Route::post('/colores-wo-disponible', [ColoresWoControllerDisponible::class, 'in
 
 //Ruta para obtener el número de palets agrupados por orden de trabajo (wo)
 Route::get('/paletsfiltro', [PaletFiltro::class, 'index']);
+
+// Capacidades BASE por línea
+Route::prefix('scenarios/{scenarioId}')->group(function () {
+    Route::get('/capacidades-base', [CapacidadBaseController::class, 'index']);
+    Route::post('/capacidades-base', [CapacidadBaseController::class, 'update']);
+});
+
+// Capacidades SEMANALES (excepciones)
+Route::prefix('scenarios/{scenarioId}')->group(function () {
+    Route::get('/capacidades-semanales', [CapacidadSemanalController::class, 'index']);
+    Route::post('/capacidades-semanales', [CapacidadSemanalController::class, 'saveBatch']);
+    Route::delete('/capacidades-semanales', [CapacidadSemanalController::class, 'deleteBatch']);
+});

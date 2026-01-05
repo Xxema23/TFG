@@ -16,9 +16,9 @@ import { useComponentesDisponibilidad } from '../../../hooks/useComponentesDispo
 import { transformComponentesData, calcularConsumoSecuencial } from '../../../services/componentesService';
 
 // ========================================
-// ✅ ÚNICO CAMBIO: FLAG PARA LOGS DE DEBUG
+// ✅ FLAG PARA LOGS DE DEBUG
 // ========================================
-const ENABLE_CAPACITY_LOGS = false; // ✅ Cambiar a true solo cuando debuguees
+const ENABLE_CAPACITY_LOGS = false;
 
 const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date }> = ({
   workOrders = [],
@@ -66,39 +66,32 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
   // 4️⃣ ✅ OPTIMIZACIÓN: Memoizar días laborables
   // ========================================
   const memoizedWorkingDays = useMemo(() => {
-    if (fabricacionesFromContext.length === 0) {
-      return [];
+  const today = new Date();
+  const allWorkingDays: string[] = [];
+  
+  // 7 días atrás
+  const startDate = new Date(today);
+  startDate.setDate(today.getDate() - 7);
+  
+  // 30 días adelante
+  const endDate = new Date(today);
+  endDate.setDate(today.getDate() + 30);
+  
+  let currentDate = new Date(startDate);
+  while (currentDate <= endDate) {
+    const dayOfWeek = currentDate.getDay();
+    if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+      const year = currentDate.getFullYear();
+      const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+      const day = String(currentDate.getDate()).padStart(2, '0');
+      allWorkingDays.push(`${year}-${month}-${day}`);
     }
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
 
-    const dates = fabricacionesFromContext
-      .map(fab => new Date(fab.Fch_Objetivo))
-      .filter(date => !isNaN(date.getTime()));
-
-    if (dates.length === 0) {
-      return [];
-    }
-
-    const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
-    const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
-    maxDate.setDate(maxDate.getDate() + 28);
-
-    const allWorkingDays: string[] = [];
-    const currentDate = new Date(minDate);
-
-    while (currentDate <= maxDate) {
-      const dayOfWeek = currentDate.getDay();
-      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-        const year = currentDate.getFullYear();
-        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-        const day = String(currentDate.getDate()).padStart(2, '0');
-        allWorkingDays.push(`${year}-${month}-${day}`);
-      }
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-
-    console.log('✅ [memoizedWorkingDays] Calculado:', allWorkingDays.length, 'días');
-    return allWorkingDays;
-  }, [fabricacionesFromContext.length]);
+  console.log('✅ [memoizedWorkingDays] Calculado:', allWorkingDays.length, 'días');
+  return allWorkingDays;
+}, []);
 
   // ========================================
   // 5️⃣ dataToUse MEMOIZADO
@@ -152,9 +145,9 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
   const numWOsParaComponentes = useMemo(() => {
     return dataToUse.map(fab => fab.NumWO);
   }, [
-    dataToUse.length,                         // Solo si cambia cantidad de WOs
-    dataToUse[0]?.NumWO,                      // Solo si cambia primera WO
-    dataToUse[dataToUse.length - 1]?.NumWO    // Solo si cambia última WO
+    dataToUse.length,
+    dataToUse[0]?.NumWO,
+    dataToUse[dataToUse.length - 1]?.NumWO
   ]);
 
   const {
@@ -271,7 +264,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
   }, [capacityLoaded, capacity.length, fabricacionesFromContext.length]);
 
   // ========================================
-  // 8️⃣ enrichedWorkOrders MEMOIZADO
+  // 8️⃣ ✅ OPTIMIZACIÓN CRÍTICA: enrichedWorkOrders con dependencies estables
   // ========================================
   const enrichedWorkOrders = useMemo(() => {
     if (!dataToUse.length) {
@@ -321,22 +314,28 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     console.log('📊 [enrichedWorkOrders] Creados y ORDENADOS:', enriched.length);
     
     return enriched;
-  }, [dataToUse]);
+  }, [
+    dataToUse.length,
+    dataToUse[0]?.NumWO,
+    dataToUse[dataToUse.length - 1]?.NumWO
+  ]);
 
   // ========================================
-  // 9️⃣ ✅ OPTIMIZACIÓN: CÁLCULO DE CONSUMO SECUENCIAL
+  // 9️⃣ ✅ OPTIMIZACIÓN CRÍTICA: Signatures estables
   // ========================================
   
-  // ✅ OPTIMIZACIÓN: Signature del orden de WOs
   const workOrdersSignature = useMemo(() => {
     return enrichedWorkOrders.map(wo => `${wo.numWO}-${wo.linea}-${wo.secuencia}`).join('|');
-  }, [enrichedWorkOrders]);
+  }, [
+    enrichedWorkOrders.length,
+    enrichedWorkOrders[0]?.numWO,
+    enrichedWorkOrders[enrichedWorkOrders.length - 1]?.numWO
+  ]);
 
-  // ✅ OPTIMIZACIÓN: Signature de componentes basada en CONTENIDO real
+  // ✅ FIX CRÍTICO: componentesSignature con dependencies estables
   const componentesSignature = useMemo(() => {
     if (componentes.length === 0) return '';
     
-    // Crear hash único basado en WOs + items + stocks
     const hash = componentes
       .map(c => `${c.wo}:${c.item_code}:${c.stock_global}:${c.req_quantity}`)
       .sort()
@@ -349,9 +348,12 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     });
     
     return hash;
-  }, [componentes]);
+  }, [
+    componentes.length,
+    componentes[0]?.wo,
+    componentes[componentes.length - 1]?.wo
+  ]);
 
-  // ✅ OPTIMIZADO: Ahora usa AMBAS signatures para evitar recálculos
   const { componentesColumnas, componentesData } = useMemo(() => {
     if (!componentesSignature || enrichedWorkOrders.length === 0) {
       console.log('⏭️ [consumoSecuencial] Skip: sin datos');
@@ -387,7 +389,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     };
   }, [componentesSignature, workOrdersSignature]);
 
-  // 🔍 Debug de estructura final
   useEffect(() => {
     if (Object.keys(componentesData).length > 0) {
       console.log('🔍 [ESTRUCTURA FINAL componentesData]', {
@@ -398,28 +399,27 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     }
   }, [componentesData]);
 
-  console.log('📊 [DetailTablesPanel] Estado componentes:', {
-    numWOs: numWOsParaComponentes.length,
-    componentes: componentes.length,
-    columnas: componentesColumnas.length,
-    isLoading: isComponentesLoading,
-    hasError: !!componentesError
-  });
-
   // ========================================
-  // 🔟 OTROS MEMOS
+  // 🔟 ✅ OPTIMIZACIÓN FINAL: filteredWOIds y visibleWorkOrders
   // ========================================
   const filteredWOIds = useMemo(() => {
     const ids = enrichedWorkOrders.map(wo => wo.id);
     console.log('🔢 [filteredWOIds]:', ids.length);
     return ids;
-  }, [enrichedWorkOrders]);
+  }, [
+    enrichedWorkOrders.length,
+    enrichedWorkOrders[0]?.id,
+    enrichedWorkOrders[enrichedWorkOrders.length - 1]?.id
+  ]);
 
   const visibleWorkOrders = useMemo(() => {
     const visible = enrichedWorkOrders.filter(wo => filteredWOIds.includes(wo.id));
     console.log('👀 [visibleWorkOrders]:', visible.length);
     return visible;
-  }, [enrichedWorkOrders, filteredWOIds]);
+  }, [
+    enrichedWorkOrders.length,
+    filteredWOIds.length
+  ]);
 
   // ========================================
   // 1️⃣1️⃣ HOOKS DE UI
@@ -450,7 +450,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
   });
 
   // ========================================
-  // 1️⃣2️⃣ HANDLERS - ✅ OPTIMIZADO CON FLAG
+  // 1️⃣2️⃣ HANDLERS
   // ========================================
   const handleReorderInTable = useCallback((draggedNumWOs: string[], targetNumWO: string) => {
     console.log('🔄 [REORDEN TABLE] Inicio:', { 
@@ -471,7 +471,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     const targetDay = targetFab.Fch_Objetivo;
     const targetLine = targetFab.Linea;
 
-    // ✅ LOGS CONDICIONALES - Solo si flag = true
     if (ENABLE_CAPACITY_LOGS) {
       console.log('📍 Target encontrado:', {
         NumWO: targetNumWO,
@@ -559,9 +558,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 
     let finalFabs = allFabs;
     
-    // ========================================
-    // ✅ CAPACITY ALGORITHM - CON FLAG CONDICIONAL
-    // ========================================
     if (capacityLoaded && capacity.length > 0 && workingDays.length > 0) {
       console.log('🎯 [REORDEN TABLE] Aplicando CAPACITY...');
       

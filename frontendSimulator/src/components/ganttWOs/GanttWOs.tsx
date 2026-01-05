@@ -113,6 +113,7 @@ const GanttWOs: React.FC<GanttWOsProps> = ({
     isSaving,
     selectedWOs,
     setSelectedWOs,
+    isCapacityReady,  // ⬅️ IMPORTAR
   } = useGanttHooks(filteredWorkOrders);
 
   useEffect(() => {
@@ -280,6 +281,18 @@ const GanttWOs: React.FC<GanttWOsProps> = ({
 
     return { uniqueLines, lineWorkOrders, capacity };
   }, [workOrdersToUse, workingDays, data?.capacity]);
+
+  // ⬇️⬇️⬇️ AÑADIR LOADING STATE PARA CAPACITY ⬇️⬇️⬇️
+  if (!isCapacityReady || !data?.capacity?.length) {
+    return (
+      <div className="flex items-center justify-center h-64 w-full">
+        <div className="flex flex-col items-center">
+          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500 mb-2"></div>
+          <span className="text-gray-600 text-sm">Cargando capacidades...</span>
+        </div>
+      </div>
+    );
+  }
 
   if (!processedData) {
     return (
