@@ -1,4 +1,4 @@
-// components/EquipmentTable.tsx - VERSIÓN OPTIMIZADA SIN LOGS DE RENDER
+// components/EquipmentTable.tsx - CON LOG DE DEBUG
 import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { DateEditor } from './DateEditor';
@@ -49,7 +49,6 @@ interface EquipmentTableProps {
   onReorderInTable?: (draggedNumWOs: string[], targetNumWO: string) => void;
 }
 
-// ✅ OPTIMIZACIÓN CRÍTICA 1: React.memo para EquipmentRow
 const EquipmentRow = memo<{
   wo: WorkOrder;
   woId: string;
@@ -90,6 +89,9 @@ const EquipmentRow = memo<{
   workOrdersMap
 }) => {
   const ref = useRef<HTMLTableRowElement>(null);
+
+  // ⬇️⬇️⬇️ LOG DE DEBUG AÑADIDO ⬇️⬇️⬇️
+  console.log(`📋 [EquipmentRow] ${wo.numWO}: día=${wo.fchObjetivo?.split('T')[0]}, seq=${wo.secuencia}, linea=${wo.linea}`);
 
   const [{ isDragging }, drag] = useDrag({
     type: 'WORK_ORDER',
@@ -212,7 +214,6 @@ const EquipmentRow = memo<{
     </tr>
   );
 }, (prevProps, nextProps) => {
-  // ✅ OPTIMIZACIÓN: Comparación personalizada para evitar re-renders innecesarios
   return (
     prevProps.woId === nextProps.woId &&
     prevProps.isSelected === nextProps.isSelected &&
@@ -228,7 +229,6 @@ const EquipmentRow = memo<{
 
 EquipmentRow.displayName = 'EquipmentRow';
 
-// ✅ OPTIMIZACIÓN CRÍTICA 2: Función de comparación para el componente principal
 const arePropsEqual = (
   prevProps: EquipmentTableProps,
   nextProps: EquipmentTableProps
@@ -251,7 +251,6 @@ const arePropsEqual = (
   return true;
 };
 
-// ✅ COMPONENTE PRINCIPAL CON TODA LA LÓGICA
 const EquipmentTableComponent: React.FC<EquipmentTableProps> = ({
   filteredWOIds,
   workOrders,
@@ -267,8 +266,6 @@ const EquipmentTableComponent: React.FC<EquipmentTableProps> = ({
   const [editingWO, setEditingWO] = useState<string | null>(null);
   const [newDate, setNewDate] = useState<string>('');
   const { updateSingleFabricacion } = useFabricacionesContext();
-
-  // ❌ LOG ELIMINADO (estaba aquí)
 
   const workOrdersMap = useMemo(() => {
     const map: Record<string, WorkOrder> = {};
@@ -500,7 +497,6 @@ const EquipmentTableComponent: React.FC<EquipmentTableProps> = ({
   );
 };
 
-// ✅ EXPORTAR COMPONENTE MEMOIZADO CON COMPARACIÓN PERSONALIZADA
 export const EquipmentTable = React.memo(EquipmentTableComponent, arePropsEqual);
 
 export default EquipmentTable;

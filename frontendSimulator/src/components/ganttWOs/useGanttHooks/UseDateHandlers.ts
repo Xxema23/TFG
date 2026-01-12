@@ -45,40 +45,61 @@ export const formatDataForAPI = (data: Partial<IFabricacionConHoras>) => {
   }, {} as any);
 };
 
-// ⬇️⬇️⬇️ ARREGLADO: 7 días atrás + 30 adelante ⬇️⬇️⬇️
+// ========================================
+// ✅ FIX CRÍTICO: Empezar desde HOY-7 días
+// ========================================
 export const generateInitialWorkingDays = (nonWorkingDates?: string[]): string[] => {
   const nonWorkingSet = new Set(nonWorkingDates || []);
+  
+  // ✅ USAR FECHA LOCAL, NO UTC
   const today = new Date();
+  
+  // 🔥 CAMBIO CRÍTICO: Empezar desde HOY-7 días
+  const startDate = new Date(today);
+  startDate.setDate(today.getDate() - 7);
+  
+  const startYear = startDate.getFullYear();
+  const startMonth = String(startDate.getMonth() + 1).padStart(2, '0');
+  const startDay = String(startDate.getDate()).padStart(2, '0');
+  const startDateStr = `${startYear}-${startMonth}-${startDay}`;
+  
   const days: string[] = [];
 
-  // 7 días atrás
-  let previousDate = new Date(today);
-  let addedDays = 0;
-  while (addedDays < 7) {
-    previousDate.setDate(previousDate.getDate() - 1);
-    const dayOfWeek = previousDate.getDay();
-    const dateStr = previousDate.toISOString().split("T")[0];
+  console.log('📅 [generateInitialWorkingDays] Fecha de inicio (HOY-7):', startDateStr);
 
-    if (dayOfWeek !== 0 && dayOfWeek !== 6 && !nonWorkingSet.has(dateStr)) {
-      days.unshift(dateStr);
-      addedDays++;
-    }
-  }
-
-  // 30 días adelante (CAMBIADO de +1 año)
+  // 30 días adelante desde HOY (no desde startDate)
   const endDate = new Date(today);
   endDate.setDate(today.getDate() + 30);
+  
+  const endYear = endDate.getFullYear();
+  const endMonth = String(endDate.getMonth() + 1).padStart(2, '0');
+  const endDay = String(endDate.getDate()).padStart(2, '0');
+  const endDateStr = `${endYear}-${endMonth}-${endDay}`;
+  
+  console.log('📅 [generateInitialWorkingDays] Fecha final (HOY+30):', endDateStr);
 
-  let currentDate = new Date(today);
+  let currentDate = new Date(startDate); // ⬅️ Ahora empieza desde HOY-7
   while (currentDate <= endDate) {
     const dayOfWeek = currentDate.getDay();
-    const dateStr = currentDate.toISOString().split("T")[0];
+    
+    // ✅ FORMATO LOCAL
+    const y = currentDate.getFullYear();
+    const m = String(currentDate.getMonth() + 1).padStart(2, '0');
+    const d = String(currentDate.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
 
+    // Solo lunes-viernes Y no festivos
     if (dayOfWeek !== 0 && dayOfWeek !== 6 && !nonWorkingSet.has(dateStr)) {
       days.push(dateStr);
     }
     currentDate.setDate(currentDate.getDate() + 1);
   }
+
+  console.log('✅ [generateInitialWorkingDays] Generados:', {
+    total: days.length,
+    primeros3: days.slice(0, 3),
+    ultimos3: days.slice(-3)
+  });
 
   return days;
 };

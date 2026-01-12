@@ -106,82 +106,107 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
     return hasChanges ? changes : null;
   }, []);
 
-  const onGanttOrdersChanged = useCallback((reorderedOrders: IFabricacionConHoras[], fromCapacity = false) => {
-  console.log('🔄 [FabricacionesContext] Gantt notifica cambio de órdenes:', {
-    totalWOs: reorderedOrders.length,
-    fromCapacity,
-    primerasWOs: reorderedOrders.slice(0, 3).map(w => ({
-      NumWO: w.NumWO,
-      Fecha: w.Fch_Objetivo,
-      Linea: w.Linea,
-      Seq: w.Secuencia
-    }))
-  });
-  
-  // ✅ CRÍTICO: MERGE en lugar de REPLACE
-  setFabricaciones(prevFabs => {
-    // Crear mapa de WOs recibidas
-    const updatedWOsMap = new Map<string, IFabricacionConHoras>();
-    reorderedOrders.forEach(wo => updatedWOsMap.set(wo.NumWO, wo));
-    
-    // Actualizar solo las WOs modificadas, mantener el resto
-    const mergedFabs = prevFabs.map(fab => {
-      const updated = updatedWOsMap.get(fab.NumWO);
-      return updated || fab; // Si existe en reorderedOrders, usar la nueva, sino mantener original
+  // 🔥 NUEVA FUNCIÓN: Reordenar fabricaciones
+  const sortFabrications = useCallback((fabs: IFabricacionConHoras[]): IFabricacionConHoras[] => {
+    return [...fabs].sort((a, b) => {
+      // 1️⃣ Ordenar por fecha (más antigua primero)
+      const dateA = new Date(a.Fch_Objetivo || '9999-12-31').getTime();
+      const dateB = new Date(b.Fch_Objetivo || '9999-12-31').getTime();
+      if (dateA !== dateB) return dateA - dateB;
+      
+      // 2️⃣ Ordenar por línea
+      const lineCompare = (a.Linea || '').localeCompare(b.Linea || '');
+      if (lineCompare !== 0) return lineCompare;
+      
+      // 3️⃣ Ordenar por secuencia
+      const seqA = a.Secuencia ?? 999999;
+      const seqB = b.Secuencia ?? 999999;
+      return seqA - seqB;
     });
-    
-    // Añadir WOs nuevas que no existían (edge case)
-    reorderedOrders.forEach(wo => {
-      if (!prevFabs.find(f => f.NumWO === wo.NumWO)) {
-        mergedFabs.push(wo);
-      }
-    });
-    
-    console.log(`✅ Merge completado: ${prevFabs.length} → ${mergedFabs.length} fabricaciones`);
-    return mergedFabs;
-  });
-  
-  setLastUpdated(new Date());
+  }, []);
 
-  if (fromCapacity) {
-    console.log('⚠️ Cambio desde capacidad, actualizando snapshot original (NO se trackea)');
-    setOriginalFabricaciones(prev => {
+  const onGanttOrdersChanged = useCallback((reorderedOrders: IFabricacionConHoras[], fromCapacity = false) => {
+    console.log('🔄 [FabricacionesContext] Gantt notifica cambio de órdenes:', {
+      totalWOs: reorderedOrders.length,
+      fromCapacity,
+      primerasWOs: reorderedOrders.slice(0, 3).map(w => ({
+        NumWO: w.NumWO,
+        Fecha: w.Fch_Objetivo,
+        Linea: w.Linea,
+        Seq: w.Secuencia
+      }))
+    });
+    
+    // ✅ MERGE en lugar de REPLACE
+    setFabricaciones(prevFabs => {
+      // Crear mapa de WOs recibidas
       const updatedWOsMap = new Map<string, IFabricacionConHoras>();
       reorderedOrders.forEach(wo => updatedWOsMap.set(wo.NumWO, wo));
       
-      return prev.map(fab => updatedWOsMap.get(fab.NumWO) || fab);
+      // Actualizar solo las WOs modificadas, mantener el resto
+      const mergedFabs = prevFabs.map(fab => {
+        const updated = updatedWOsMap.get(fab.NumWO);
+        return updated || fab; // Si existe en reorderedOrders, usar la nueva, sino mantener original
+      });
+      
+      // Añadir WOs nuevas que no existían (edge case)
+      reorderedOrders.forEach(wo => {
+        if (!prevFabs.find(f => f.NumWO === wo.NumWO)) {
+          mergedFabs.push(wo);
+        }
+      });
+      
+      console.log(`✅ Merge completado: ${prevFabs.length} → ${mergedFabs.length} fabricaciones`);
+      
+      // 🔥 NUEVO: Reordenar después del merge
+      const sortedFabs = sortFabrications(mergedFabs);
+      console.log('🔀 [FabricacionesContext] Array reordenado por fecha → línea → secuencia');
+      
+      return sortedFabs;
     });
-    return;
-  }
-
-  const newPendingChanges = new Map<string, PendingChange>();
-  
-  reorderedOrders.forEach(currentWO => {
-    const originalWO = originalFabricaciones.find(o => o.NumWO === currentWO.NumWO);
     
-    if (!originalWO) {
-      console.warn('⚠️ WO no encontrada en original:', currentWO.NumWO);
+    setLastUpdated(new Date());
+
+    if (fromCapacity) {
+      console.log('⚠️ Cambio desde capacidad, actualizando snapshot original (NO se trackea)');
+      setOriginalFabricaciones(prev => {
+        const updatedWOsMap = new Map<string, IFabricacionConHoras>();
+        reorderedOrders.forEach(wo => updatedWOsMap.set(wo.NumWO, wo));
+        
+        const merged = prev.map(fab => updatedWOsMap.get(fab.NumWO) || fab);
+        return sortFabrications(merged); // 🔥 También reordenar el original
+      });
       return;
     }
 
-    const changes = detectChanges(originalWO, currentWO);
+    const newPendingChanges = new Map<string, PendingChange>();
     
-    if (changes) {
-      newPendingChanges.set(currentWO.NumWO, {
-        NumWO: currentWO.NumWO,
-        changes,
-        timestamp: new Date()
-      });
+    reorderedOrders.forEach(currentWO => {
+      const originalWO = originalFabricaciones.find(o => o.NumWO === currentWO.NumWO);
       
-      console.log(`📝 Cambio detectado en ${currentWO.NumWO}:`, changes);
-    }
-  });
+      if (!originalWO) {
+        console.warn('⚠️ WO no encontrada en original:', currentWO.NumWO);
+        return;
+      }
 
-  setPendingChanges(newPendingChanges);
-  setHasPendingChanges(newPendingChanges.size > 0);
+      const changes = detectChanges(originalWO, currentWO);
+      
+      if (changes) {
+        newPendingChanges.set(currentWO.NumWO, {
+          NumWO: currentWO.NumWO,
+          changes,
+          timestamp: new Date()
+        });
+        
+        console.log(`📝 Cambio detectado en ${currentWO.NumWO}:`, changes);
+      }
+    });
 
-  console.log(`✅ Total cambios pendientes: ${newPendingChanges.size}`);
-}, [originalFabricaciones, detectChanges]);
+    setPendingChanges(newPendingChanges);
+    setHasPendingChanges(newPendingChanges.size > 0);
+
+    console.log(`✅ Total cambios pendientes: ${newPendingChanges.size}`);
+  }, [originalFabricaciones, detectChanges, sortFabrications]);
 
   const savePendingChanges = useCallback(async () => {
     if (pendingChanges.size === 0) {

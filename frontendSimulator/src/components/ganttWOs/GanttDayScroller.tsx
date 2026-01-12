@@ -89,6 +89,13 @@ const GanttDayScroller: React.FC<GanttDayScrollerProps> = ({
       return [];
     }
 
+    // ⬇️⬇️⬇️ LOG CRÍTICO: DÍAS RECIBIDOS ⬇️⬇️⬇️
+    console.log('🗓️ [GanttDayScroller] DAYS recibidos:', {
+      total: days.length,
+      primeros5: days.slice(0, 5),
+      ultimos3: days.slice(-3)
+    });
+
     const dayIndexMap = new Map(days.map((day, index) => [day, index]));
 
     const sortedWorkOrders = [...workOrders].sort((a, b) => {
@@ -97,15 +104,47 @@ const GanttDayScroller: React.FC<GanttDayScrollerProps> = ({
       return dateA - dateB || a.Secuencia - b.Secuencia;
     });
 
+    // ⬇️⬇️⬇️ LOG CRÍTICO: WOs A PROCESAR ⬇️⬇️⬇️
+    console.log('📦 [GanttDayScroller] WOs a procesar:', {
+      total: sortedWorkOrders.length,
+      primeras5: sortedWorkOrders.slice(0, 5).map(wo => ({
+        NumWO: wo.NumWO,
+        Fch_Objetivo: wo.Fch_Objetivo,
+        Secuencia: wo.Secuencia
+      }))
+    });
+
     const blocks: WorkOrderBlock[] = [];
     const dayUsage = new Map<string, number>();
     days.forEach(day => dayUsage.set(day, 0));
+
+    let skippedCount = 0;
 
     sortedWorkOrders.forEach(workOrder => {
       const startDay = normalizeFecha(workOrder.Fch_Objetivo);
       const startDayindex = dayIndexMap.get(startDay);
       
+      // ⬇️⬇️⬇️ LOG CRÍTICO: WO SALTADA CON ANÁLISIS DE CARACTERES ⬇️⬇️⬇️
       if (startDayindex === undefined) {
+        skippedCount++;
+        if (skippedCount <= 5) { // Solo loggear las primeras 5 para no saturar
+          console.log('⚠️ [GanttDayScroller] WO SALTADA - ANÁLISIS DETALLADO:', {
+            NumWO: workOrder.NumWO,
+            Fch_Objetivo: workOrder.Fch_Objetivo,
+            startDayNormalizado: startDay,
+            startDayLength: startDay.length,
+            startDayCharCodes: Array.from(startDay).map(c => c.charCodeAt(0)),
+            daysDisponiblesPrimeros3: days.slice(0, 3),
+            primerDiaLength: days[0]?.length,
+            primerDiaCharCodes: days[0] ? Array.from(days[0]).map(c => c.charCodeAt(0)) : [],
+            segundoDiaLength: days[1]?.length,
+            segundoDiaCharCodes: days[1] ? Array.from(days[1]).map(c => c.charCodeAt(0)) : [],
+            dayIndexMapHas: dayIndexMap.has(startDay),
+            dayIndexMapSize: dayIndexMap.size,
+            comparisonConPrimerDia: startDay === days[0],
+            comparisonConSegundoDia: startDay === days[1]
+          });
+        }
         return;
       }
 
@@ -154,10 +193,12 @@ const GanttDayScroller: React.FC<GanttDayScrollerProps> = ({
       });
     });
 
-    // ⬇️⬇️⬇️ LOG DETALLADO DE WIDTHS ⬇️⬇️⬇️
-    console.log(`🎨 [GanttDayScroller] Blocks generados:`, {
-      total: blocks.length,
-      primeros3: blocks.slice(0, 3).map(b => ({
+    // ⬇️⬇️⬇️ LOG RESUMEN FINAL ⬇️⬇️⬇️
+    console.log(`🎨 [GanttDayScroller] RESUMEN FINAL:`, {
+      totalWOsRecibidas: sortedWorkOrders.length,
+      totalWOsSaltadas: skippedCount,
+      totalBlocksGenerados: blocks.length,
+      primeros3Blocks: blocks.slice(0, 3).map(b => ({
         NumWO: b.workOrder.NumWO,
         width: b.width,
         left: b.left,

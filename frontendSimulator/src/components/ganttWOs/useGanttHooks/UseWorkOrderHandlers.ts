@@ -3,6 +3,13 @@ import { IFabricacionConHoras } from "../../../interfaces/IFabricacionConHoras";
 import { GanttData, DailyCapacity, CapacityChangeInfo } from "./Types";
 import { updateFabricacionConHoras } from "../../../services/FabricacionConHoras";
 
+// ✅ FUNCIÓN PARA NORMALIZAR FECHAS - SOPORTA AMBOS FORMATOS
+const normalizeDate = (date: string): string => {
+  // Quitar la parte de la hora si existe (formato: "2026-01-13 00:00:00")
+  // Y también funciona con ISO (formato: "2026-01-13T00:00:00")
+  return date.split(' ')[0].split('T')[0];
+};
+
 interface WorkOrderChange {
   NumWO: string;
   originalFch_Objetivo: string;
@@ -21,7 +28,6 @@ export const useWorkOrderHandlers = (
     capacities: any[],
     workingDays: string[]
   ) => DailyCapacity[],
-  // ✅ NUEVO PARÁMETRO
   dataRef: React.MutableRefObject<GanttData | null>
 ) => {
   const [selectedWOs, setSelectedWOs] = useState<string[]>([]);
@@ -140,7 +146,7 @@ export const useWorkOrderHandlers = (
   const reorderSequencesInDay = useCallback(
     (workOrders: IFabricacionConHoras[], targetDay: string, targetLine: string): IFabricacionConHoras[] => {
       const wosInDay = workOrders
-        .filter((wo) => wo.Fch_Objetivo === targetDay && wo.Linea === targetLine)
+        .filter((wo) => normalizeDate(wo.Fch_Objetivo) === normalizeDate(targetDay) && wo.Linea === targetLine)
         .sort((a, b) => a.Secuencia - b.Secuencia);
 
       const resequencedWOs = wosInDay.map((wo, index) => ({
@@ -149,7 +155,7 @@ export const useWorkOrderHandlers = (
       }));
 
       const otherWOs = workOrders.filter(
-        (wo) => !(wo.Fch_Objetivo === targetDay && wo.Linea === targetLine)
+        (wo) => !(normalizeDate(wo.Fch_Objetivo) === normalizeDate(targetDay) && wo.Linea === targetLine)
       );
 
       return [...otherWOs, ...resequencedWOs];
@@ -161,7 +167,6 @@ export const useWorkOrderHandlers = (
     (targetDay: string, targetLine: string, insertBeforeWOId?: string, draggedItems?: string[]) => {
       const currentSelectedWOs = draggedItems || selectedWOs;
       
-      // ✅ CORREGIDO: Usar dataRef.current en vez de data
       const currentData = dataRef.current;
       
       if (!currentData || !currentData.workOrders || currentData.workOrders.length === 0) {
@@ -182,18 +187,21 @@ export const useWorkOrderHandlers = (
         targetDay,
         targetLine,
         insertBeforeWOId,
-        draggedItems,
+        draggedItems: currentSelectedWOs,
         dataWorkOrders: currentData.workOrders.length
       });
 
       setData((prevData) => {
         if (!prevData || !prevData.workOrders || prevData.workOrders.length === 0) {
           console.error('❌ [handleWorkOrderDrop] prevData inválido');
-          return prevData; // ✅ Cambiado de null a prevData
+          return prevData;
         }
 
         let workOrdersSnapshot = [...prevData.workOrders];
 
+        // ========================================
+        // 1️⃣ PREPARAR WOs ARRASTRADAS
+        // ========================================
         const draggedWOsData = currentSelectedWOs.map(id => {
           const wo = workOrdersSnapshot.find(w => w.NumWO === id);
           if (!wo) {
@@ -219,12 +227,18 @@ export const useWorkOrderHandlers = (
           return prevData;
         }
 
-        console.log('📦 WOs arrastradas:', draggedWOsData.map(w => w.NumWO));
+        console.log('📦 WOs arrastradas:', draggedWOsData.map(w => `${w.NumWO} (${w.Fch_Objetivo_Prev.split('T')[0]} → ${targetDay.split('T')[0]})`));
 
+        // ========================================
+        // 2️⃣ REMOVER WOs ARRASTRADAS DEL SNAPSHOT
+        // ========================================
         workOrdersSnapshot = workOrdersSnapshot.filter(wo => !currentSelectedWOs.includes(wo.NumWO));
 
+        // ========================================
+        // 3️⃣ REORDENAR EN DÍA OBJETIVO (SIN CAPACITY)
+        // ========================================
         const existingWOsInTarget = workOrdersSnapshot
-          .filter(wo => wo.Fch_Objetivo === targetDay && wo.Linea === targetLine)
+          .filter(wo => normalizeDate(wo.Fch_Objetivo) === normalizeDate(targetDay) && wo.Linea === targetLine)
           .sort((a, b) => a.Secuencia - b.Secuencia);
 
         let insertAtIndex = existingWOsInTarget.length;
@@ -245,53 +259,137 @@ export const useWorkOrderHandlers = (
           ...existingWOsInTarget.slice(insertAtIndex)
         ];
 
-        const resequencedWOs = finalOrderedWOs.map((wo, index) => ({
+        // ✅ CAMBIO 1: Asignar secuencia temporal para el sort estable posterior
+        let resequencedWOs = finalOrderedWOs.map((wo, index) => ({
           ...wo,
-          Secuencia: index + 1
+          Secuencia: index + 1,
+          _tempSequence: index + 1  // ⬅️ Secuencia temporal para sort estable
         }));
 
-        console.log('🔢 WOs resequenciadas:', resequencedWOs.map(w => `${w.NumWO}:seq${w.Secuencia}`));
+        console.log('🔢 WOs resequenciadas (SIN aplicar capacity - drag manual):', resequencedWOs.map(w => `${w.NumWO}:seq${w.Secuencia}`));
 
+        // ========================================
+        // 4️⃣ ✅ RESEQUENCIAR TODAS LAS WOs AFECTADAS
+        // ========================================
+        // Eliminar las WOs del día objetivo del snapshot
         workOrdersSnapshot = workOrdersSnapshot.filter(wo =>
-          !(wo.Fch_Objetivo === targetDay && wo.Linea === targetLine)
+          !(normalizeDate(wo.Fch_Objetivo) === normalizeDate(targetDay) && wo.Linea === targetLine)
         );
 
+        // Agregar las WOs redistribuidas
         workOrdersSnapshot.push(...resequencedWOs);
 
-        const originalLocationsToReorder = new Set<string>();
-        draggedWOsData.forEach(draggedWO => {
-          if (draggedWO.Fch_Objetivo_Prev !== targetDay || draggedWO.Linea_Prev !== targetLine) {
-            originalLocationsToReorder.add(`${draggedWO.Fch_Objetivo_Prev}|${draggedWO.Linea_Prev}`);
+        // ✅ CRÍTICO: RESEQUENCIAR **TODAS** LAS WOs EN LOS DÍAS AFECTADOS
+        const affectedDays = new Set<string>();
+        
+        // Días donde ahora hay WOs redistribuidas
+        resequencedWOs.forEach(wo => {
+          affectedDays.add(normalizeDate(wo.Fch_Objetivo));
+        });
+        
+        // Días originales de donde se movieron las WOs
+        draggedWOsData.forEach(wo => {
+          const originalDay = normalizeDate(wo.Fch_Objetivo_Prev);
+          if (originalDay !== normalizeDate(targetDay) || wo.Linea_Prev !== targetLine) {
+            affectedDays.add(originalDay);
           }
         });
 
-        originalLocationsToReorder.forEach(locationKey => {
-          const [prevDay, prevLine] = locationKey.split("|");
-          workOrdersSnapshot = reorderSequencesInDay(workOrdersSnapshot, prevDay, prevLine);
+        console.log('🔄 Días afectados a resequenciar:', Array.from(affectedDays));
+
+        // ✅ CAMBIO 2: Sort ESTABLE con tiebreaker
+        affectedDays.forEach(day => {
+          const wosInDay = workOrdersSnapshot
+            .filter(wo => normalizeDate(wo.Fch_Objetivo) === day && wo.Linea === targetLine)
+            .sort((a, b) => {
+              // Primero ordenar por Secuencia
+              if (a.Secuencia !== b.Secuencia) {
+                return a.Secuencia - b.Secuencia;
+              }
+              
+              // Si tienen la misma Secuencia, usar _tempSequence como tiebreaker
+              const aTemp = (a as any)._tempSequence || 0;
+              const bTemp = (b as any)._tempSequence || 0;
+              if (aTemp !== bTemp) {
+                return aTemp - bTemp;
+              }
+              
+              // Si aún son iguales, usar NumWO alfabéticamente
+              return a.NumWO.localeCompare(b.NumWO);
+            });
+          
+          console.log(`  📋 WOs en día ${day} ANTES de resequenciar:`, wosInDay.map(w => `${w.NumWO}:seq${w.Secuencia}`).join(', '));
+          
+          const resequenced = wosInDay.map((wo, idx) => {
+            const { _tempSequence, ...cleanWO } = wo as any;  // Eliminar _tempSequence
+            return {
+              ...cleanWO,
+              Secuencia: idx + 1
+            };
+          });
+          
+          console.log(`  📋 WOs en día ${day} DESPUÉS de resequenciar:`, resequenced.map(w => `${w.NumWO}:seq${w.Secuencia}`).join(', '));
+          
+          // Actualizar en el snapshot
+          workOrdersSnapshot = workOrdersSnapshot.map(wo => {
+            const updated = resequenced.find(r => r.NumWO === wo.NumWO);
+            return updated || wo;
+          });
+          
+          console.log(`  🔢 ${day}: ${resequenced.length} WOs resequenciadas`);
         });
 
+        // ========================================
+        // 6️⃣ PROGRAMAR GUARDADO
+        // ========================================
         const changesToSchedule = new Map<string, WorkOrderChange>();
 
-        if (Array.isArray(resequencedWOs) && resequencedWOs.length > 0) {
-          resequencedWOs.forEach((finalWO) => {
-            const original = draggedWOsData.find(d => d.NumWO === finalWO.NumWO);
-            if (original &&
-                (original.Fch_Objetivo_Prev !== finalWO.Fch_Objetivo ||
-                 original.Secuencia_Prev !== finalWO.Secuencia ||
-                 original.Linea_Prev !== finalWO.Linea)) {
+        // Detectar cambios en WOs movidas
+        draggedWOsData.forEach(original => {
+          const final = workOrdersSnapshot.find(wo => wo.NumWO === original.NumWO);
+          if (final &&
+              (original.Fch_Objetivo_Prev !== final.Fch_Objetivo ||
+               original.Secuencia_Prev !== final.Secuencia ||
+               original.Linea_Prev !== final.Linea)) {
 
-              changesToSchedule.set(finalWO.NumWO, {
-                NumWO: finalWO.NumWO,
-                originalFch_Objetivo: original.Fch_Objetivo_Prev,
-                originalSecuencia: original.Secuencia_Prev,
-                originalLinea: original.Linea_Prev,
-                newFch_Objetivo: finalWO.Fch_Objetivo,
-                newSecuencia: finalWO.Secuencia,
-                newLinea: finalWO.Linea,
-              });
-            }
-          });
-        }
+            changesToSchedule.set(final.NumWO, {
+              NumWO: final.NumWO,
+              originalFch_Objetivo: original.Fch_Objetivo_Prev,
+              originalSecuencia: original.Secuencia_Prev,
+              originalLinea: original.Linea_Prev,
+              newFch_Objetivo: final.Fch_Objetivo,
+              newSecuencia: final.Secuencia,
+              newLinea: final.Linea,
+            });
+          }
+        });
+
+        // ✅ DETECTAR CAMBIOS EN WOs DESPLAZADAS (las que estaban en los días afectados)
+        affectedDays.forEach(day => {
+          workOrdersSnapshot
+            .filter(wo => normalizeDate(wo.Fch_Objetivo) === day && wo.Linea === targetLine)
+            .forEach(wo => {
+              // Buscar la WO original en prevData
+              const originalWO = prevData.workOrders.find(orig => orig.NumWO === wo.NumWO);
+              if (originalWO && 
+                  (originalWO.Fch_Objetivo !== wo.Fch_Objetivo ||
+                   originalWO.Secuencia !== wo.Secuencia ||
+                   originalWO.Linea !== wo.Linea)) {
+                
+                changesToSchedule.set(wo.NumWO, {
+                  NumWO: wo.NumWO,
+                  originalFch_Objetivo: originalWO.Fch_Objetivo,
+                  originalSecuencia: originalWO.Secuencia,
+                  originalLinea: originalWO.Linea,
+                  newFch_Objetivo: wo.Fch_Objetivo,
+                  newSecuencia: wo.Secuencia,
+                  newLinea: wo.Linea,
+                });
+              }
+            });
+        });
+
+        console.log('💾 Cambios detectados:', changesToSchedule.size, 'WOs');
 
         if (changesToSchedule.size > 0) {
           scheduleAutoSave(changesToSchedule);
@@ -308,7 +406,7 @@ export const useWorkOrderHandlers = (
         };
       });
     },
-    [selectedWOs, reorderSequencesInDay, dataRef, scheduleAutoSave] // ✅ Añadido dataRef
+    [selectedWOs, reorderSequencesInDay, dataRef, scheduleAutoSave, workingDays, setData]
   );
 
   const getWorkOrderCurrentState = useCallback(

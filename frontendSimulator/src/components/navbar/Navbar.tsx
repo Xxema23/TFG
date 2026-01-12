@@ -7,7 +7,7 @@ const Navbar: React.FC = () => {
       <div className="container mx-auto flex justify-between items-center">
         <div className="flex items-center">
           <img 
-            src="/carrier-logo.png" 
+            src="/logo.png" 
             alt="Carrier Logo" 
             className="h-8 mr-3"
           />

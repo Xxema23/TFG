@@ -1,5 +1,5 @@
 import React, { useRef } from "react";
-import { useDrag, DragSourceMonitor, ConnectDragSource } from "react-dnd";
+import { useDrag, DragSourceMonitor } from "react-dnd";
 import { IFabricacionConHoras } from "../../interfaces/IFabricacionConHoras";
 
 interface WorkOrderComponentProps {
@@ -12,8 +12,8 @@ interface WorkOrderComponentProps {
   onSelect: (id: string, ctrlKey: boolean) => void;
   selectedWOs: string[];
   style?: React.CSSProperties;
-  dataDay: string;   // día de la celda en la que se renderiza la WO
-  dataLine: string;  // línea de la celda en la que se renderiza la WO
+  dataDay: string;
+  dataLine: string;
 }
 
 interface DragItem {
@@ -49,30 +49,25 @@ const WorkOrderComponent: React.FC<WorkOrderComponentProps> = ({
         dataLine
       });
       
-      // Asegurar que el item tenga la estructura correcta
       const draggedWOs = isSelected ? selectedWOs : [workOrder.NumWO];
       
-      // Si no está seleccionada, seleccionarla automáticamente
       if (!isSelected) {
         onSelect(workOrder.NumWO, false);
       }
       
       return { 
         workOrders: draggedWOs,
-        // Información adicional para debugging
         sourceDay: dataDay,
         sourceLine: dataLine,
         dragType: 'work_order'
       };
     },
-    // Mejorar la función canDrag
     canDrag: (): boolean => {
-      return true; // Siempre permitir drag
+      return true;
     },
     collect: (monitor: DragSourceMonitor): { isDragging: boolean } => ({
       isDragging: monitor.isDragging(),
     }),
-    // Evento end para debugging
     end: (item: DragItem | undefined, monitor: DragSourceMonitor): void => {
       const dropResult = monitor.getDropResult();
       console.log("🏁 Drag terminado:", {
@@ -83,7 +78,6 @@ const WorkOrderComponent: React.FC<WorkOrderComponentProps> = ({
     },
   });
 
-  // Conectar la referencia drag
   drag(ref);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>): void => {
@@ -93,7 +87,6 @@ const WorkOrderComponent: React.FC<WorkOrderComponentProps> = ({
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>): void => {
-    // Solo seleccionar en mousedown si no está ya seleccionada
     if (!isSelected && !e.ctrlKey) {
       onSelect(workOrder.NumWO, false);
     }
@@ -109,23 +102,26 @@ const WorkOrderComponent: React.FC<WorkOrderComponentProps> = ({
     return "white";
   };
 
-  // Cursor mejorado
   const getCursor = (): string => {
     if (isDragging) return "grabbing";
     return "grab";
   };
 
+  // ✅✅✅ FIX APLICADO: Propiedades críticas PRIMERO, ...style AL FINAL
   return (
     <div
       ref={ref}
       onClick={handleClick}
       onMouseDown={handleMouseDown}
       style={{
-        ...style,
+        // ✅ PROPIEDADES CRÍTICAS DE POSITIONING (NO SOBRESCRIBIBLES)
         position: "absolute",
         left: `${left}px`,
         width: `${width}px`,
         top: `${top}px`,
+        height: '40px', // ✅ ALTURA EXPLÍCITA AÑADIDA
+        
+        // ✅ ESTILOS VISUALES
         backgroundColor: getBackgroundColor(),
         color: getTextColor(),
         border: isSelected ? "2px solid #1e40af" : "1px solid #059669",
@@ -139,7 +135,10 @@ const WorkOrderComponent: React.FC<WorkOrderComponentProps> = ({
         boxShadow: isSelected 
           ? "0 4px 8px rgba(59, 130, 246, 0.3)" 
           : "0 2px 4px rgba(0, 0, 0, 0.1)",
-        transition: isDragging ? "none" : "all 0.2s ease", // Sin transición durante drag
+        transition: isDragging ? "none" : "all 0.2s ease",
+        
+        // ✅ ...style AL FINAL para permitir sobrescritura si es necesario
+        ...style,
       }}
       data-wo-id={workOrder.NumWO}
       data-day={dataDay}
@@ -174,7 +173,6 @@ const WorkOrderComponent: React.FC<WorkOrderComponentProps> = ({
             justifyContent: "center",
             fontSize: "10px",
             fontWeight: "bold",
-            // Evitar que el badge interfiera con el drag
             pointerEvents: "none",
           }}
         >

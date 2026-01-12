@@ -31,6 +31,7 @@ interface IWorkOrderFrontend {
   precioUnitario?: number;
 }
 
+// ⬇️⬇️⬇️ FIX CRÍTICO: NO hacer spread, filtrar directamente preservando orden ⬇️⬇️⬇️
 const filterFabricaciones = (
   fabricaciones: IFabricacionConHoras[],
   filterValues: FilterValues,
@@ -41,7 +42,9 @@ const filterFabricaciones = (
   }
 
   try {
-    let filtered = [...fabricaciones];
+    // ❌ ANTES: let filtered = [...fabricaciones];
+    // ✅ AHORA: filtrar sin spread, preservando orden original
+    let filtered = fabricaciones;
 
     if (filterValues.linea && Array.isArray(filterValues.linea) && filterValues.linea.length > 0) {
       filtered = filtered.filter(fab => {
@@ -121,7 +124,6 @@ const Simulator: React.FC = () => {
   const [ganttWorkOrders, setGanttWorkOrders] = useState<IFabricacionConHoras[]>([]);
   const [ganttDataLoaded, setGanttDataLoaded] = useState(false);
   
-  // 🆕 CRÍTICO: Forzar re-render con un contador
   const [updateCounter, setUpdateCounter] = useState(0);
 
   const filterValuesRef = useRef(filterValues);
@@ -138,8 +140,7 @@ const Simulator: React.FC = () => {
     setDefaultLineFilter
   } = UseSimulatorData();
 
-  // 🆕 SOLUCIÓN: Usar fabricaciones directamente del contexto
-  // y forzar actualización cuando lastUpdated cambie
+  // ✅ AHORA filterFabricaciones preserva el orden del contexto
   const fabricacionesFiltradas = useMemo(() => {
     console.log('🔍 [fabricacionesFiltradas] Evaluando:', {
       total: fabricaciones.length,
@@ -155,7 +156,7 @@ const Simulator: React.FC = () => {
     
     const resultado = filterFabricaciones(fabricaciones, filterValues, defaultLineFilter);
     
-    console.log('✅ Fabricaciones filtradas:', {
+    console.log('✅ Fabricaciones filtradas (orden preservado):', {
       total: fabricaciones.length,
       filtradas: resultado.length,
       lastUpdated: lastUpdated?.toISOString(),
@@ -165,18 +166,12 @@ const Simulator: React.FC = () => {
         Linea: f.Linea,
         Fch: f.Fch_Objetivo,
         Seq: f.Secuencia
-      })),
-      distribucionPorFecha: resultado.reduce((acc, f) => {
-        const fecha = f.Fch_Objetivo?.split('T')[0] || f.Fch_Objetivo;
-        acc[fecha] = (acc[fecha] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>)
+      }))
     });
     
     return resultado;
   }, [fabricaciones, filterValues, defaultLineFilter, lastUpdated, updateCounter]);
 
-  // 🆕 CRÍTICO: Escuchar cambios en lastUpdated y forzar re-render
   useEffect(() => {
     if (lastUpdated) {
       console.log('🔄 [Simulator] lastUpdated cambió, forzando actualización:', lastUpdated.toISOString());
@@ -455,8 +450,6 @@ const Simulator: React.FC = () => {
       defaultLineFilter: defaultLineFilter,
       lastUpdated: lastUpdated,
       
-      // 🆕 NUEVO: Pasar capacidad del Gantt para aplicar restricciones
-      // Nota: Por ahora pasamos undefined, en el siguiente paso obtendremos estos datos del Gantt
       ganttCapacity: undefined,
       ganttWorkingDays: undefined
     };

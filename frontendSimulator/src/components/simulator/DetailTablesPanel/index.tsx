@@ -63,35 +63,70 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
   } = useFabricacionesConHoras();
 
   // ========================================
-  // 4️⃣ ✅ OPTIMIZACIÓN: Memoizar días laborables
+  // 4️⃣ ✅✅✅ FIX CRÍTICO: workingDays INTELIGENTE ✅✅✅
   // ========================================
   const memoizedWorkingDays = useMemo(() => {
-  const today = new Date();
-  const allWorkingDays: string[] = [];
-  
-  // 7 días atrás
-  const startDate = new Date(today);
-  startDate.setDate(today.getDate() - 7);
-  
-  // 30 días adelante
-  const endDate = new Date(today);
-  endDate.setDate(today.getDate() + 30);
-  
-  let currentDate = new Date(startDate);
-  while (currentDate <= endDate) {
-    const dayOfWeek = currentDate.getDay();
-    if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-      const year = currentDate.getFullYear();
-      const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-      const day = String(currentDate.getDate()).padStart(2, '0');
-      allWorkingDays.push(`${year}-${month}-${day}`);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalizar a medianoche
+    const allWorkingDays: string[] = [];
+    
+    // ✅ LÓGICA INTELIGENTE: Empezar desde la WO más antigua o desde hoy
+    let startDate = new Date(today);
+    
+    if (fabricacionesFromContext.length > 0) {
+      // Encontrar la fecha más antigua de todas las WOs
+      const oldestDate = new Date(
+        Math.min(...fabricacionesFromContext.map(f => {
+          const woDate = new Date(f.Fch_Objetivo);
+          woDate.setHours(0, 0, 0, 0);
+          return woDate.getTime();
+        }))
+      );
+      
+      console.log('📅 [memoizedWorkingDays] Fecha más antigua de WOs:', oldestDate.toISOString().split('T')[0]);
+      console.log('📅 [memoizedWorkingDays] Fecha de hoy:', today.toISOString().split('T')[0]);
+      
+      // Si la WO más antigua es anterior a hoy, usar esa fecha
+      // Si no, usar hoy
+      startDate = oldestDate < today ? oldestDate : today;
+      
+      console.log('✅ [memoizedWorkingDays] Fecha de inicio seleccionada:', startDate.toISOString().split('T')[0]);
+    } else {
+      console.log('⚠️ [memoizedWorkingDays] No hay WOs, usando fecha de hoy');
     }
-    currentDate.setDate(currentDate.getDate() + 1);
-  }
+    
+    // 30 días adelante desde HOY (no desde startDate)
+    const endDate = new Date(today);
+    endDate.setDate(today.getDate() + 30);
+    
+    console.log('📅 [memoizedWorkingDays] Rango:', {
+      desde: startDate.toISOString().split('T')[0],
+      hasta: endDate.toISOString().split('T')[0],
+      totalWOs: fabricacionesFromContext.length
+    });
+    
+    let currentDate = new Date(startDate);
+    while (currentDate <= endDate) {
+      const dayOfWeek = currentDate.getDay();
+      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+        const year = currentDate.getFullYear();
+        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+        const day = String(currentDate.getDate()).padStart(2, '0');
+        allWorkingDays.push(`${year}-${month}-${day}`);
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
 
-  console.log('✅ [memoizedWorkingDays] Calculado:', allWorkingDays.length, 'días');
-  return allWorkingDays;
-}, []);
+    console.log('✅ [memoizedWorkingDays] Calculado:', allWorkingDays.length, 'días');
+    console.log('📅 [memoizedWorkingDays] Primeros 3 días:', allWorkingDays.slice(0, 3));
+    console.log('📅 [memoizedWorkingDays] Últimos 3 días:', allWorkingDays.slice(-3));
+    
+    return allWorkingDays;
+  }, [
+    fabricacionesFromContext.length,
+    // ⬇️ Detectar cambios en fechas de WOs
+    fabricacionesFromContext.map(f => f.Fch_Objetivo).join(',')
+  ]);
 
   // ========================================
   // 5️⃣ dataToUse MEMOIZADO
@@ -173,7 +208,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     }
   }, [hasPendingChanges, dataToUse]);
 
-  // ✅ CAPACITY LOADING OPTIMIZADO
+  // ✅ CAPACITY LOADING
   useEffect(() => {
     const convertWeeklyToDaily = (
       weeklyCapacities: CapacityData[], 
@@ -264,7 +299,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
   }, [capacityLoaded, capacity.length, fabricacionesFromContext.length]);
 
   // ========================================
-  // 8️⃣ ✅ OPTIMIZACIÓN CRÍTICA: enrichedWorkOrders con dependencies estables
+  // 8️⃣ ⬇️⬇️⬇️ FIX CRÍTICO: DEDUPLICAR + usar orden del contexto ⬇️⬇️⬇️
   // ========================================
   const enrichedWorkOrders = useMemo(() => {
     if (!dataToUse.length) {
@@ -272,23 +307,25 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       return [];
     }
 
-    const sortedData = [...dataToUse].sort((a, b) => {
-      const dateA = new Date(a.Fch_Objetivo).getTime();
-      const dateB = new Date(b.Fch_Objetivo).getTime();
-      
-      if (dateA !== dateB) {
-        return dateA - dateB;
-      }
-      
-      const lineCompare = (a.Linea || '').localeCompare(b.Linea || '');
-      if (lineCompare !== 0) {
-        return lineCompare;
-      }
-      
-      return (a.Secuencia || 0) - (b.Secuencia || 0);
+    // ✅ PASO 1: DEDUPLICAR por NumWO (última aparición gana)
+    const uniqueWOsMap = new Map<string, typeof dataToUse[0]>();
+    
+    dataToUse.forEach(fab => {
+      // La última ocurrencia de cada NumWO sobrescribe las anteriores
+      uniqueWOsMap.set(fab.NumWO, fab);
+    });
+    
+    // Convertir el Map de vuelta a array (mantiene orden de inserción)
+    const uniqueDataToUse = Array.from(uniqueWOsMap.values());
+    
+    console.log('🔍 [enrichedWorkOrders] Deduplicación:', {
+      original: dataToUse.length,
+      despuesDeDuplicar: uniqueDataToUse.length,
+      duplicadasEliminadas: dataToUse.length - uniqueDataToUse.length
     });
 
-    const enriched = sortedData.map((fab, index) => ({
+    // ✅ PASO 2: Crear enrichedWorkOrders desde datos únicos
+    const enriched = uniqueDataToUse.map((fab, index) => ({
       id: `wo_${index}`,
       numWO: fab.NumWO || '',
       equipo: fab.Equipo || '',
@@ -311,17 +348,19 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       _originalData: fab
     }));
 
-    console.log('📊 [enrichedWorkOrders] Creados y ORDENADOS:', enriched.length);
+    console.log('📊 [enrichedWorkOrders] Creados (únicos + orden del contexto):', enriched.length);
     
     return enriched;
   }, [
     dataToUse.length,
     dataToUse[0]?.NumWO,
-    dataToUse[dataToUse.length - 1]?.NumWO
+    dataToUse[dataToUse.length - 1]?.NumWO,
+    // ⬇️ CRÍTICO: Detectar cambios de secuencia para re-renderizar
+    dataToUse.map(d => `${d.NumWO}-${d.Secuencia}`).join(',')
   ]);
 
   // ========================================
-  // 9️⃣ ✅ OPTIMIZACIÓN CRÍTICA: Signatures estables
+  // 9️⃣ Signatures estables (optimizado)
   // ========================================
   
   const workOrdersSignature = useMemo(() => {
@@ -332,19 +371,15 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     enrichedWorkOrders[enrichedWorkOrders.length - 1]?.numWO
   ]);
 
-  // ✅ FIX CRÍTICO: componentesSignature con dependencies estables
   const componentesSignature = useMemo(() => {
     if (componentes.length === 0) return '';
     
-    const hash = componentes
-      .map(c => `${c.wo}:${c.item_code}:${c.stock_global}:${c.req_quantity}`)
-      .sort()
-      .join('|');
+    const hash = `${componentes.length}-${componentes[0]?.wo || ''}-${componentes[componentes.length - 1]?.wo || ''}`;
     
-    console.log('🔑 [componentesSignature] Generada:', {
+    console.log('🔑 [componentesSignature] Generada (optimizada):', {
       hashLength: hash.length,
       componentes: componentes.length,
-      primeros50chars: hash.substring(0, 50) + '...'
+      hash
     });
     
     return hash;
@@ -387,7 +422,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       componentesColumnas: availableComponents,
       componentesData: componentAvailability
     };
-  }, [componentesSignature, workOrdersSignature]);
+  }, [componentesSignature, workOrdersSignature, componentes, enrichedWorkOrders]);
 
   useEffect(() => {
     if (Object.keys(componentesData).length > 0) {
@@ -400,7 +435,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
   }, [componentesData]);
 
   // ========================================
-  // 🔟 ✅ OPTIMIZACIÓN FINAL: filteredWOIds y visibleWorkOrders
+  // 🔟 filteredWOIds y visibleWorkOrders
   // ========================================
   const filteredWOIds = useMemo(() => {
     const ids = enrichedWorkOrders.map(wo => wo.id);
@@ -450,7 +485,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
   });
 
   // ========================================
-  // 1️⃣2️⃣ HANDLERS
+  // 1️⃣2️⃣ HANDLER - CAPACITY SOLO EN WOs AFECTADAS
   // ========================================
   const handleReorderInTable = useCallback((draggedNumWOs: string[], targetNumWO: string) => {
     console.log('🔄 [REORDEN TABLE] Inicio:', { 
@@ -558,16 +593,23 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 
     let finalFabs = allFabs;
     
+    // ✅ CAPACITY SOLO EN WOs AFECTADAS
     if (capacityLoaded && capacity.length > 0 && workingDays.length > 0) {
-      console.log('🎯 [REORDEN TABLE] Aplicando CAPACITY...');
+      console.log('🎯 [REORDEN TABLE] Aplicando CAPACITY solo a WOs afectadas...');
       
       const dropDate = targetDay.split('T')[0];
+      const draggedNumWOsSet = new Set(draggedNumWOs);
       
       const wosToRedistribute = allFabs
         .filter(wo => {
-          if (wo.Linea !== targetLine) return false;
-          const woDate = wo.Fch_Objetivo.split('T')[0];
-          return woDate >= dropDate;
+          if (draggedNumWOsSet.has(wo.NumWO)) return true;
+          
+          if (wo.Linea === targetLine) {
+            const woDate = wo.Fch_Objetivo.split('T')[0];
+            return woDate === dropDate;
+          }
+          
+          return false;
         })
         .sort((a, b) => {
           const dateCompare = new Date(a.Fch_Objetivo).getTime() - new Date(b.Fch_Objetivo).getTime();
@@ -575,16 +617,12 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
           return a.Secuencia - b.Secuencia;
         });
       
-      const wosBeforeDrop = allFabs.filter(wo => {
-        if (wo.Linea !== targetLine) return true;
-        const woDate = wo.Fch_Objetivo.split('T')[0];
-        return woDate < dropDate;
+      const wosToKeepIntact = allFabs.filter(wo => {
+        return !wosToRedistribute.find(w => w.NumWO === wo.NumWO);
       });
       
-      if (ENABLE_CAPACITY_LOGS) {
-        console.log(`📦 WOs a redistribuir: ${wosToRedistribute.length} desde ${dropDate}`);
-        console.log(`🔒 WOs anteriores intactas: ${wosBeforeDrop.length}`);
-      }
+      console.log(`📦 WOs a redistribuir: ${wosToRedistribute.length}`);
+      console.log(`🔒 WOs intactas: ${wosToKeepIntact.length}`);
       
       const capacityByDay = new Map<string, number>();
       const dayUsage = new Map<string, number>();
@@ -595,13 +633,15 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
         dayUsage.set(day, 0);
       });
       
-      wosBeforeDrop.forEach(wo => {
+      wosToKeepIntact.forEach(wo => {
         if (wo.Linea !== targetLine) return;
         
         const woDate = wo.Fch_Objetivo.split('T')[0];
-        const woHours = parseFloat(wo.horas_totales_de_la_wo) || 0;
-        const currentUsage = dayUsage.get(woDate) || 0;
-        dayUsage.set(woDate, currentUsage + woHours);
+        if (workingDays.includes(woDate)) {
+          const woHours = parseFloat(wo.horas_totales_de_la_wo) || 0;
+          const currentUsage = dayUsage.get(woDate) || 0;
+          dayUsage.set(woDate, currentUsage + woHours);
+        }
       });
       
       const redistributed: typeof wosToRedistribute = [];
@@ -617,8 +657,10 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
         let remainingHours = woHours;
         let assignedToDay: string | null = null;
         
-        while (currentDayIndex < workingDays.length && remainingHours > 0) {
-          const currentDay = workingDays[currentDayIndex];
+        let dayIndex = workingDays.findIndex(d => d === dropDate);
+        
+        while (dayIndex < workingDays.length && remainingHours > 0) {
+          const currentDay = workingDays[dayIndex];
           const dayCapacity = capacityByDay.get(currentDay) || DEFAULT_INITIAL_CAPACITY;
           const dayUsed = dayUsage.get(currentDay) || 0;
           const availableCapacity = dayCapacity - dayUsed;
@@ -645,7 +687,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
             }
           }
           
-          currentDayIndex++;
+          dayIndex++;
         }
         
         if (assignedToDay) {
@@ -690,11 +732,13 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       
       const redistributedNumWOs = new Set(redistributedWithCorrectSeq.map(w => w.NumWO));
       finalFabs = [
-        ...wosBeforeDrop.filter(wo => !redistributedNumWOs.has(wo.NumWO)),
+        ...wosToKeepIntact.filter(wo => !redistributedNumWOs.has(wo.NumWO)),
         ...redistributedWithCorrectSeq
       ];
       
       console.log('✅ [REORDEN TABLE] Capacity aplicada. WOs finales:', finalFabs.length);
+      console.log('   🔒 WOs preservadas:', wosToKeepIntact.length);
+      console.log('   🔄 WOs redistribuidas:', redistributedWithCorrectSeq.length);
     } else {
       console.log('⚠️ [REORDEN TABLE] Capacity NO disponible');
     }
