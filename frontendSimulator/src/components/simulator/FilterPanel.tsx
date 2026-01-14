@@ -168,6 +168,9 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     }
   }, [providedFilterOptions, availableLines, allWorkOrders, workOrders]);
 
+  // ========================================
+  // ✅ NUEVO: VOLVER A MULTI-SELECT PERO CON LOCALSTORAGE
+  // ========================================
   const toggleFilterValue = useCallback((type: keyof FilterValues, value: string) => {
     try {
       const newFilters = createSafeFilterValues(filterValues);
@@ -186,6 +189,21 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         } else {
           newFilters[type] = [...currentValues, value];
         }
+        
+        // ✅ NUEVO: Si es filtro de línea, guardar en localStorage
+        if (type === 'linea') {
+          const updatedLines = isSelected 
+            ? currentValues.filter(v => v !== value)
+            : [...currentValues, value];
+          
+          if (updatedLines.length > 0 && onDefaultLineChange) {
+            // Guardar la última línea seleccionada como "principal"
+            const lastSelectedLine = isSelected ? updatedLines[updatedLines.length - 1] : value;
+            onDefaultLineChange(lastSelectedLine);
+            console.log('💾 [FilterPanel] Líneas seleccionadas:', updatedLines);
+            console.log('🏠 [FilterPanel] Línea principal:', lastSelectedLine);
+          }
+        }
       }
       
       onFilterChange(newFilters);
@@ -194,6 +212,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
       console.error('❌ Error al cambiar filtro:', error);
     }
   }, [filterValues, onFilterChange, onDefaultLineChange]);
+  // ========================================
 
   const selectAll = useCallback(() => {
     if (activeTab === 'fchObjetivo') return;
@@ -203,10 +222,17 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
       newFilters[activeTab as keyof FilterOptions] = [...filterOptions[activeTab as keyof FilterOptions]];
       
       onFilterChange(newFilters);
+      
+      // ✅ NUEVO: Si es línea, guardar todas en localStorage
+      if (activeTab === 'linea' && filterOptions.linea.length > 0 && onDefaultLineChange) {
+        const lastLine = filterOptions.linea[filterOptions.linea.length - 1];
+        onDefaultLineChange(lastLine);
+        console.log('💾 [FilterPanel] Todas las líneas seleccionadas:', filterOptions.linea.length);
+      }
     } catch (error) {
       console.error('❌ Error al seleccionar todos:', error);
     }
-  }, [activeTab, filterValues, filterOptions, onFilterChange, defaultLineFilter]);
+  }, [activeTab, filterValues, filterOptions, onFilterChange, onDefaultLineChange]);
 
   const selectNone = useCallback(() => {
     try {
@@ -303,6 +329,9 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                 />
                 <label htmlFor={`${activeTab}-${option}`} className="text-xs cursor-pointer flex-grow">
                   {option}
+                  {activeTab === 'linea' && option === defaultLineFilter && (
+                    <span className="ml-1 text-blue-500">★</span>
+                  )}
                 </label>
               </div>
             ))

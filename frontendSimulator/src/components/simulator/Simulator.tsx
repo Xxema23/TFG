@@ -42,8 +42,6 @@ const filterFabricaciones = (
   }
 
   try {
-    // ❌ ANTES: let filtered = [...fabricaciones];
-    // ✅ AHORA: filtrar sin spread, preservando orden original
     let filtered = fabricaciones;
 
     if (filterValues.linea && Array.isArray(filterValues.linea) && filterValues.linea.length > 0) {
@@ -107,10 +105,44 @@ const Simulator: React.FC = () => {
   const [activeScenario, setActiveScenario] = useState<number | null>(1);
   const [selectedWorkOrderIds, setSelectedWorkOrderIds] = useState<string[]>([]);
   
+  // ========================================
+  // ✅ LOCALSTORAGE PARA RECORDAR LÍNEA
+  // ========================================
+  const STORAGE_KEY = 'simulator_last_selected_line';
   const DEFAULT_LINE = "S21";
   
+  // ✅ Función helper para leer localStorage
+  const getStoredLine = useCallback((): string => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored && typeof stored === 'string' && stored.trim()) {
+        console.log('📦 [localStorage] Línea recuperada:', stored);
+        return stored.trim();
+      }
+    } catch (error) {
+      console.warn('⚠️ Error leyendo localStorage:', error);
+    }
+    return DEFAULT_LINE;
+  }, []);
+  
+  // ✅ Función helper para guardar en localStorage
+  const saveLineToStorage = useCallback((line: string): void => {
+    try {
+      if (line && typeof line === 'string' && line.trim()) {
+        localStorage.setItem(STORAGE_KEY, line.trim());
+        console.log('💾 [localStorage] Línea guardada:', line.trim());
+      }
+    } catch (error) {
+      console.warn('⚠️ Error guardando en localStorage:', error);
+    }
+  }, []);
+  
+  // ✅ Usar línea guardada como inicial
+  const initialLine = getStoredLine();
+  // ========================================
+  
   const [filterValues, setFilterValues] = useState<FilterValues>({
-    linea: [DEFAULT_LINE],
+    linea: [initialLine],
     numWO: [],
     numDoc: [],
     equipo: [],
@@ -125,6 +157,9 @@ const Simulator: React.FC = () => {
   const [ganttDataLoaded, setGanttDataLoaded] = useState(false);
   
   const [updateCounter, setUpdateCounter] = useState(0);
+  
+  // ✅ NUEVO: Flag para controlar inicialización
+  const [hasInitialized, setHasInitialized] = useState(false);
 
   const filterValuesRef = useRef(filterValues);
   filterValuesRef.current = filterValues;
@@ -301,35 +336,76 @@ const Simulator: React.FC = () => {
     });
   }, [defaultLineFilter, DEFAULT_LINE]);
 
+  // ========================================
+  // 🔥 FIX: Guardar TODAS las líneas seleccionadas, pero solo última en localStorage
+  // ========================================
   const handleDefaultLineChange = useCallback((line: string) => {
     if (typeof line === 'string' && line.trim() && setDefaultLineFilter) {
       const trimmedLine = line.trim();
+      
+      // ✅ Guardar la última línea seleccionada en localStorage
+      const currentStoredLine = getStoredLine();
+      
+      if (currentStoredLine !== trimmedLine) {
+        saveLineToStorage(trimmedLine);
+        console.log(`🔄 [handleDefaultLineChange] Línea cambiada: ${currentStoredLine} → ${trimmedLine}`);
+      } else {
+        console.log(`⏭️ [handleDefaultLineChange] Línea sin cambios: ${trimmedLine}`);
+      }
+      
       setDefaultLineFilter(trimmedLine);
       
-      setFilterValues(prev => ({
-        ...prev,
-        linea: [trimmedLine]
-      }));
+      // ❌ ANTES: Sobrescribía con una sola línea
+      // setFilterValues(prev => ({
+      //   ...prev,
+      //   linea: [trimmedLine]
+      // }));
+      
+      // ✅ AHORA: NO tocar filterValues aquí, FilterPanel ya lo maneja
+      console.log('⏭️ [handleDefaultLineChange] FilterPanel maneja la selección múltiple');
     }
-  }, [setDefaultLineFilter]);
+  }, [setDefaultLineFilter, saveLineToStorage, getStoredLine]);
+  // ========================================
 
+  // ========================================
+  // ✅ Leer localStorage SOLO en la primera carga
+  // ========================================
   useEffect(() => {
+    // ✅ CRÍTICO: Solo ejecutar UNA VEZ al inicio
+    if (hasInitialized) {
+      console.log('⏭️ [Inicialización] Ya se ejecutó, saltando...');
+      return;
+    }
+    
     if (setDefaultLineFilter && fabricaciones.length > 0 && availableLines.length > 0) {
+      const storedLine = getStoredLine();
+      const hasStoredLine = availableLines.includes(storedLine);
       const hasDefaultLine = availableLines.includes(DEFAULT_LINE);
       
       console.log('🔧 Configurando línea por defecto:', {
+        storedLine,
+        hasStoredLine,
         DEFAULT_LINE,
         hasDefaultLine,
         availableLines: availableLines.slice(0, 5),
         currentDefault: defaultLineFilter
       });
       
-      if (hasDefaultLine) {
+      // ✅ PRIORIDAD: 1) Línea guardada, 2) S21, 3) Primera disponible
+      if (hasStoredLine) {
+        setDefaultLineFilter(storedLine);
+        setFilterValues(prev => ({
+          ...prev,
+          linea: [storedLine]
+        }));
+        console.log(`✅ Línea restaurada desde localStorage: ${storedLine}`);
+      } else if (hasDefaultLine) {
         setDefaultLineFilter(DEFAULT_LINE);
         setFilterValues(prev => ({
           ...prev,
           linea: [DEFAULT_LINE]
         }));
+        saveLineToStorage(DEFAULT_LINE);
         console.log(`✅ Línea por defecto configurada: ${DEFAULT_LINE}`);
       } else {
         const firstLine = availableLines[0];
@@ -338,10 +414,15 @@ const Simulator: React.FC = () => {
           ...prev,
           linea: [firstLine]
         }));
+        saveLineToStorage(firstLine);
         console.log(`⚠️ ${DEFAULT_LINE} no encontrada, usando primera línea: ${firstLine}`);
       }
+      
+      // ✅ CRÍTICO: Marcar como inicializado para que no se vuelva a ejecutar
+      setHasInitialized(true);
     }
-  }, [fabricaciones.length, availableLines, setDefaultLineFilter, DEFAULT_LINE, defaultLineFilter]);
+  }, [fabricaciones.length, availableLines.length]); // ❌ QUITÉ: defaultLineFilter, getStoredLine, saveLineToStorage, setDefaultLineFilter
+  // ========================================
 
   if (isLoading) {
     return (
