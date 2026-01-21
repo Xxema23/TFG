@@ -2,7 +2,8 @@ import React, { createContext, useContext, useState, useCallback, ReactNode, use
 import { IFabricacionConHoras } from '../interfaces/IFabricacionConHoras';
 import { getFabricacionesConHoras, updateFabricacionConHoras } from '../services/FabricacionConHoras';
 
-// ✅ Tipo para tracking de cambios
+const DEBUG_MODE = false;
+
 interface PendingChange {
   NumWO: string;
   changes: Partial<IFabricacionConHoras>;
@@ -42,7 +43,6 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
   const [originalFabricaciones, setOriginalFabricaciones] = useState<IFabricacionConHoras[]>([]);
 
   const refetch = useCallback(async () => {
-    console.log('🔄 [FabricacionesContext] Recargando fabricaciones desde API...');
     setIsLoading(true);
     setError(null);
     try {
@@ -54,18 +54,15 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
       setPendingChanges(new Map());
       setHasPendingChanges(false);
       setLastUpdated(new Date());
-      
-      console.log('✅ [FabricacionesContext] Fabricaciones cargadas:', validFabricaciones.length);
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Error desconocido'));
-      console.error('❌ [FabricacionesContext] Error al recargar fabricaciones:', err);
+      console.error('❌ Error al recargar fabricaciones:', err);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   const updateFabricaciones = useCallback((newFabricaciones: IFabricacionConHoras[]) => {
-    console.log('📝 [FabricacionesContext] Actualizando fabricaciones:', newFabricaciones.length);
     setFabricaciones(newFabricaciones);
     setLastUpdated(new Date());
   }, []);
@@ -75,7 +72,6 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
       fab.NumWO === woId ? { ...fab, ...updatedData } : fab
     ));
     setLastUpdated(new Date());
-    console.log('📝 [FabricacionesContext] Fabricación actualizada:', woId, updatedData);
   }, []);
 
   const detectChanges = useCallback((
@@ -106,19 +102,15 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
     return hasChanges ? changes : null;
   }, []);
 
-  // 🔥 NUEVA FUNCIÓN: Reordenar fabricaciones
   const sortFabrications = useCallback((fabs: IFabricacionConHoras[]): IFabricacionConHoras[] => {
     return [...fabs].sort((a, b) => {
-      // 1️⃣ Ordenar por fecha (más antigua primero)
       const dateA = new Date(a.Fch_Objetivo || '9999-12-31').getTime();
       const dateB = new Date(b.Fch_Objetivo || '9999-12-31').getTime();
       if (dateA !== dateB) return dateA - dateB;
       
-      // 2️⃣ Ordenar por línea
       const lineCompare = (a.Linea || '').localeCompare(b.Linea || '');
       if (lineCompare !== 0) return lineCompare;
       
-      // 3️⃣ Ordenar por secuencia
       const seqA = a.Secuencia ?? 999999;
       const seqB = b.Secuencia ?? 999999;
       return seqA - seqB;
@@ -126,55 +118,34 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
   }, []);
 
   const onGanttOrdersChanged = useCallback((reorderedOrders: IFabricacionConHoras[], fromCapacity = false) => {
-    console.log('🔄 [FabricacionesContext] Gantt notifica cambio de órdenes:', {
-      totalWOs: reorderedOrders.length,
-      fromCapacity,
-      primerasWOs: reorderedOrders.slice(0, 3).map(w => ({
-        NumWO: w.NumWO,
-        Fecha: w.Fch_Objetivo,
-        Linea: w.Linea,
-        Seq: w.Secuencia
-      }))
-    });
-    
-    // ✅ MERGE en lugar de REPLACE
     setFabricaciones(prevFabs => {
-      // Crear mapa de WOs recibidas
       const updatedWOsMap = new Map<string, IFabricacionConHoras>();
       reorderedOrders.forEach(wo => updatedWOsMap.set(wo.NumWO, wo));
       
-      // Actualizar solo las WOs modificadas, mantener el resto
       const mergedFabs = prevFabs.map(fab => {
         const updated = updatedWOsMap.get(fab.NumWO);
-        return updated || fab; // Si existe en reorderedOrders, usar la nueva, sino mantener original
+        return updated || fab;
       });
       
-      // Añadir WOs nuevas que no existían (edge case)
       reorderedOrders.forEach(wo => {
         if (!prevFabs.find(f => f.NumWO === wo.NumWO)) {
           mergedFabs.push(wo);
         }
       });
       
-      console.log(`✅ Merge completado: ${prevFabs.length} → ${mergedFabs.length} fabricaciones`);
-      
-      // 🔥 NUEVO: Reordenar después del merge
       const sortedFabs = sortFabrications(mergedFabs);
-      console.log('🔀 [FabricacionesContext] Array reordenado por fecha → línea → secuencia');
-      
       return sortedFabs;
     });
     
     setLastUpdated(new Date());
 
     if (fromCapacity) {
-      console.log('⚠️ Cambio desde capacidad, actualizando snapshot original (NO se trackea)');
       setOriginalFabricaciones(prev => {
         const updatedWOsMap = new Map<string, IFabricacionConHoras>();
         reorderedOrders.forEach(wo => updatedWOsMap.set(wo.NumWO, wo));
         
         const merged = prev.map(fab => updatedWOsMap.get(fab.NumWO) || fab);
-        return sortFabrications(merged); // 🔥 También reordenar el original
+        return sortFabrications(merged);
       });
       return;
     }
@@ -185,7 +156,7 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
       const originalWO = originalFabricaciones.find(o => o.NumWO === currentWO.NumWO);
       
       if (!originalWO) {
-        console.warn('⚠️ WO no encontrada en original:', currentWO.NumWO);
+        if (DEBUG_MODE) console.warn('⚠️ WO no encontrada en original:', currentWO.NumWO);
         return;
       }
 
@@ -197,77 +168,59 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
           changes,
           timestamp: new Date()
         });
-        
-        console.log(`📝 Cambio detectado en ${currentWO.NumWO}:`, changes);
       }
     });
 
     setPendingChanges(newPendingChanges);
     setHasPendingChanges(newPendingChanges.size > 0);
-
-    console.log(`✅ Total cambios pendientes: ${newPendingChanges.size}`);
   }, [originalFabricaciones, detectChanges, sortFabrications]);
 
   const savePendingChanges = useCallback(async () => {
     if (pendingChanges.size === 0) {
-      console.log('ℹ️ No hay cambios pendientes para guardar');
       return { success: true, saved: 0, failed: 0, errors: [] };
     }
 
-    console.log(`💾 [FabricacionesContext] Guardando ${pendingChanges.size} cambios...`);
-    
     let saved = 0;
     let failed = 0;
     const errors: Array<{ NumWO: string; error: string }> = [];
 
     const savePromises = Array.from(pendingChanges.values()).map(async (pendingChange) => {
       try {
-        console.log(`   💾 Guardando ${pendingChange.NumWO}:`, pendingChange.changes);
-        
         await updateFabricacionConHoras(pendingChange.NumWO, pendingChange.changes);
-        
         saved++;
-        console.log(`   ✅ ${pendingChange.NumWO} guardado`);
       } catch (error) {
         failed++;
         const errorMsg = error instanceof Error ? error.message : 'Error desconocido';
         errors.push({ NumWO: pendingChange.NumWO, error: errorMsg });
-        console.error(`   ❌ Error guardando ${pendingChange.NumWO}:`, errorMsg);
+        console.error(`❌ Error guardando ${pendingChange.NumWO}:`, errorMsg);
       }
     });
 
     await Promise.all(savePromises);
 
-    console.log(`✅ Guardado completado: ${saved} éxitos, ${failed} fallos`);
-
     if (failed === 0) {
       setPendingChanges(new Map());
       setHasPendingChanges(false);
       setOriginalFabricaciones([...fabricaciones]);
-      console.log('✅ Todos los cambios guardados, snapshot actualizado');
     }
 
     return { success: failed === 0, saved, failed, errors };
   }, [pendingChanges, fabricaciones]);
 
   const discardPendingChanges = useCallback(() => {
-    console.log('🔄 [FabricacionesContext] Descartando cambios pendientes');
     setFabricaciones([...originalFabricaciones]);
     setPendingChanges(new Map());
     setHasPendingChanges(false);
     setLastUpdated(new Date());
-    console.log('✅ Cambios descartados, datos revertidos');
   }, [originalFabricaciones]);
 
   const onGanttOrderSaved = useCallback(async () => {
-    console.log('💾 [FabricacionesContext] Gantt notifica que se guardaron los cambios');
     await savePendingChanges();
     await refetch();
   }, [savePendingChanges, refetch]);
 
   useEffect(() => {
     if (fabricaciones.length === 0 && !isLoading && !error) {
-      console.log('🚀 [FabricacionesContext] Cargando datos iniciales...');
       refetch();
     }
   }, []);

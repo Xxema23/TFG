@@ -10,28 +10,8 @@ import DetailTablesPanel from './DetailTablesPanel/index';
 import { IFabricacionConHoras } from '../../interfaces/IFabricacionConHoras';
 import { UseSimulatorData } from './DetailTablesPanel/hooks/useSimulatorData';
 
-interface IWorkOrderFrontend {
-  id: string;
-  numWO: string;
-  equipo: string;
-  secuencia: number;
-  linea: string;
-  numDoc: string;
-  tipDoc: string;
-  estadoWO: string;
-  fchObjetivo: string;
-  fchAcuse: string;
-  fchAlbarAn: string;
-  importe: number;
-  cshTotal: number;
-  cliente?: string;
-  descripcion?: string;
-  cantidad?: number;
-  unidad?: string;
-  precioUnitario?: number;
-}
+const DEBUG_MODE = false;
 
-// ⬇️⬇️⬇️ FIX CRÍTICO: NO hacer spread, filtrar directamente preservando orden ⬇️⬇️⬇️
 const filterFabricaciones = (
   fabricaciones: IFabricacionConHoras[],
   filterValues: FilterValues,
@@ -45,9 +25,7 @@ const filterFabricaciones = (
     let filtered = fabricaciones;
 
     if (filterValues.linea && Array.isArray(filterValues.linea) && filterValues.linea.length > 0) {
-      filtered = filtered.filter(fab => {
-        return filterValues.linea.includes(fab.Linea);
-      });
+      filtered = filtered.filter(fab => filterValues.linea.includes(fab.Linea));
     }
 
     if (filterValues.fchObjetivo) {
@@ -58,27 +36,19 @@ const filterFabricaciones = (
     }
 
     if (filterValues.numWO && Array.isArray(filterValues.numWO) && filterValues.numWO.length > 0) {
-      filtered = filtered.filter(fab => {
-        return filterValues.numWO.includes(fab.NumWO);
-      });
+      filtered = filtered.filter(fab => filterValues.numWO.includes(fab.NumWO));
     }
 
     if (filterValues.equipo && Array.isArray(filterValues.equipo) && filterValues.equipo.length > 0) {
-      filtered = filtered.filter(fab => {
-        return filterValues.equipo.includes(fab.Equipo);
-      });
+      filtered = filtered.filter(fab => filterValues.equipo.includes(fab.Equipo));
     }
 
     if (filterValues.numDoc && Array.isArray(filterValues.numDoc) && filterValues.numDoc.length > 0) {
-      filtered = filtered.filter(fab => {
-        return filterValues.numDoc.includes(fab.Numero_de_pedido || '');
-      });
+      filtered = filtered.filter(fab => filterValues.numDoc.includes(fab.Numero_de_pedido || ''));
     }
 
     if (filterValues.tipDoc && Array.isArray(filterValues.tipDoc) && filterValues.tipDoc.length > 0) {
-      filtered = filtered.filter(fab => {
-        return filterValues.tipDoc.includes(fab.Tipo_de_pedido || '');
-      });
+      filtered = filtered.filter(fab => filterValues.tipDoc.includes(fab.Tipo_de_pedido || ''));
     }
 
     if (filterValues.estadoWO && Array.isArray(filterValues.estadoWO) && filterValues.estadoWO.length > 0) {
@@ -105,18 +75,14 @@ const Simulator: React.FC = () => {
   const [activeScenario, setActiveScenario] = useState<number | null>(1);
   const [selectedWorkOrderIds, setSelectedWorkOrderIds] = useState<string[]>([]);
   
-  // ========================================
-  // ✅ LOCALSTORAGE PARA RECORDAR LÍNEA
-  // ========================================
   const STORAGE_KEY = 'simulator_last_selected_line';
   const DEFAULT_LINE = "S21";
   
-  // ✅ Función helper para leer localStorage
   const getStoredLine = useCallback((): string => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored && typeof stored === 'string' && stored.trim()) {
-        console.log('📦 [localStorage] Línea recuperada:', stored);
+        if (DEBUG_MODE) console.log('📦 [localStorage] Línea recuperada:', stored);
         return stored.trim();
       }
     } catch (error) {
@@ -125,21 +91,18 @@ const Simulator: React.FC = () => {
     return DEFAULT_LINE;
   }, []);
   
-  // ✅ Función helper para guardar en localStorage
   const saveLineToStorage = useCallback((line: string): void => {
     try {
       if (line && typeof line === 'string' && line.trim()) {
         localStorage.setItem(STORAGE_KEY, line.trim());
-        console.log('💾 [localStorage] Línea guardada:', line.trim());
+        if (DEBUG_MODE) console.log('💾 [localStorage] Línea guardada:', line.trim());
       }
     } catch (error) {
       console.warn('⚠️ Error guardando en localStorage:', error);
     }
   }, []);
   
-  // ✅ Usar línea guardada como inicial
   const initialLine = getStoredLine();
-  // ========================================
   
   const [filterValues, setFilterValues] = useState<FilterValues>({
     linea: [initialLine],
@@ -155,10 +118,7 @@ const Simulator: React.FC = () => {
 
   const [ganttWorkOrders, setGanttWorkOrders] = useState<IFabricacionConHoras[]>([]);
   const [ganttDataLoaded, setGanttDataLoaded] = useState(false);
-  
   const [updateCounter, setUpdateCounter] = useState(0);
-  
-  // ✅ NUEVO: Flag para controlar inicialización
   const [hasInitialized, setHasInitialized] = useState(false);
 
   const filterValuesRef = useRef(filterValues);
@@ -175,41 +135,17 @@ const Simulator: React.FC = () => {
     setDefaultLineFilter
   } = UseSimulatorData();
 
-  // ✅ AHORA filterFabricaciones preserva el orden del contexto
   const fabricacionesFiltradas = useMemo(() => {
-    console.log('🔍 [fabricacionesFiltradas] Evaluando:', {
-      total: fabricaciones.length,
-      filterValues,
-      lastUpdated: lastUpdated?.toISOString(),
-      updateCounter
-    });
-    
     if (fabricaciones.length === 0) {
-      console.log('⚠️ No hay fabricaciones para filtrar');
       return [];
     }
     
     const resultado = filterFabricaciones(fabricaciones, filterValues, defaultLineFilter);
-    
-    console.log('✅ Fabricaciones filtradas (orden preservado):', {
-      total: fabricaciones.length,
-      filtradas: resultado.length,
-      lastUpdated: lastUpdated?.toISOString(),
-      lineasFiltradas: filterValues.linea,
-      primeras10: resultado.slice(0, 10).map(f => ({
-        NumWO: f.NumWO,
-        Linea: f.Linea,
-        Fch: f.Fch_Objetivo,
-        Seq: f.Secuencia
-      }))
-    });
-    
     return resultado;
   }, [fabricaciones, filterValues, defaultLineFilter, lastUpdated, updateCounter]);
 
   useEffect(() => {
     if (lastUpdated) {
-      console.log('🔄 [Simulator] lastUpdated cambió, forzando actualización:', lastUpdated.toISOString());
       setUpdateCounter(prev => prev + 1);
     }
   }, [lastUpdated]);
@@ -336,44 +272,21 @@ const Simulator: React.FC = () => {
     });
   }, [defaultLineFilter, DEFAULT_LINE]);
 
-  // ========================================
-  // 🔥 FIX: Guardar TODAS las líneas seleccionadas, pero solo última en localStorage
-  // ========================================
   const handleDefaultLineChange = useCallback((line: string) => {
     if (typeof line === 'string' && line.trim() && setDefaultLineFilter) {
       const trimmedLine = line.trim();
-      
-      // ✅ Guardar la última línea seleccionada en localStorage
       const currentStoredLine = getStoredLine();
       
       if (currentStoredLine !== trimmedLine) {
         saveLineToStorage(trimmedLine);
-        console.log(`🔄 [handleDefaultLineChange] Línea cambiada: ${currentStoredLine} → ${trimmedLine}`);
-      } else {
-        console.log(`⏭️ [handleDefaultLineChange] Línea sin cambios: ${trimmedLine}`);
       }
       
       setDefaultLineFilter(trimmedLine);
-      
-      // ❌ ANTES: Sobrescribía con una sola línea
-      // setFilterValues(prev => ({
-      //   ...prev,
-      //   linea: [trimmedLine]
-      // }));
-      
-      // ✅ AHORA: NO tocar filterValues aquí, FilterPanel ya lo maneja
-      console.log('⏭️ [handleDefaultLineChange] FilterPanel maneja la selección múltiple');
     }
   }, [setDefaultLineFilter, saveLineToStorage, getStoredLine]);
-  // ========================================
 
-  // ========================================
-  // ✅ Leer localStorage SOLO en la primera carga
-  // ========================================
   useEffect(() => {
-    // ✅ CRÍTICO: Solo ejecutar UNA VEZ al inicio
     if (hasInitialized) {
-      console.log('⏭️ [Inicialización] Ya se ejecutó, saltando...');
       return;
     }
     
@@ -382,23 +295,12 @@ const Simulator: React.FC = () => {
       const hasStoredLine = availableLines.includes(storedLine);
       const hasDefaultLine = availableLines.includes(DEFAULT_LINE);
       
-      console.log('🔧 Configurando línea por defecto:', {
-        storedLine,
-        hasStoredLine,
-        DEFAULT_LINE,
-        hasDefaultLine,
-        availableLines: availableLines.slice(0, 5),
-        currentDefault: defaultLineFilter
-      });
-      
-      // ✅ PRIORIDAD: 1) Línea guardada, 2) S21, 3) Primera disponible
       if (hasStoredLine) {
         setDefaultLineFilter(storedLine);
         setFilterValues(prev => ({
           ...prev,
           linea: [storedLine]
         }));
-        console.log(`✅ Línea restaurada desde localStorage: ${storedLine}`);
       } else if (hasDefaultLine) {
         setDefaultLineFilter(DEFAULT_LINE);
         setFilterValues(prev => ({
@@ -406,7 +308,6 @@ const Simulator: React.FC = () => {
           linea: [DEFAULT_LINE]
         }));
         saveLineToStorage(DEFAULT_LINE);
-        console.log(`✅ Línea por defecto configurada: ${DEFAULT_LINE}`);
       } else {
         const firstLine = availableLines[0];
         setDefaultLineFilter(firstLine);
@@ -415,14 +316,11 @@ const Simulator: React.FC = () => {
           linea: [firstLine]
         }));
         saveLineToStorage(firstLine);
-        console.log(`⚠️ ${DEFAULT_LINE} no encontrada, usando primera línea: ${firstLine}`);
       }
       
-      // ✅ CRÍTICO: Marcar como inicializado para que no se vuelva a ejecutar
       setHasInitialized(true);
     }
-  }, [fabricaciones.length, availableLines.length]); // ❌ QUITÉ: defaultLineFilter, getStoredLine, saveLineToStorage, setDefaultLineFilter
-  // ========================================
+  }, [fabricaciones.length, availableLines.length]);
 
   if (isLoading) {
     return (
@@ -477,7 +375,7 @@ const Simulator: React.FC = () => {
                 No se encontraron órdenes de trabajo
               </h3>
               <p className="mt-2 text-sm text-gray-500">
-                {`No hay resultados para los filtros seleccionados. Prueba a modificar los criterios de búsqueda.`}
+                No hay resultados para los filtros seleccionados. Prueba a modificar los criterios de búsqueda.
               </p>
               <div className="mt-4">
                 <button
@@ -486,12 +384,6 @@ const Simulator: React.FC = () => {
                 >
                   Limpiar filtros
                 </button>
-              </div>
-              <div className="mt-4 text-xs text-gray-400">
-                Filtros activos: {Object.entries(filterValues)
-                  .filter(([_, value]) => Array.isArray(value) ? value.length > 0 : Boolean(value))
-                  .map(([key]) => key)
-                  .join(', ')}
               </div>
             </div>
           </div>
@@ -509,14 +401,6 @@ const Simulator: React.FC = () => {
   };
 
   const SafeDetailTablesPanel = () => {
-    console.log('🔑 [SafeDetailTablesPanel] Rendering:', {
-      contextLength: fabricaciones.length,
-      filteredLength: fabricacionesFiltradas.length,
-      hasActiveFilters: hasActiveFilters,
-      lastUpdated: lastUpdated?.toISOString(),
-      updateCounter
-    });
-
     const baseProps = {
       workOrders: [],
       workOrderColors: workOrderColors,
@@ -525,12 +409,10 @@ const Simulator: React.FC = () => {
       onReorderWO: handleReorderWO,
       selectedWorkOrderIds: selectedWorkOrderIds,
       availableWOs: availableWOs,
-      
       filteredFabrications: fabricacionesFiltradas,
       useFilteredData: hasActiveFilters,
       defaultLineFilter: defaultLineFilter,
       lastUpdated: lastUpdated,
-      
       ganttCapacity: undefined,
       ganttWorkingDays: undefined
     };
@@ -605,7 +487,6 @@ const Simulator: React.FC = () => {
     <div className="w-full h-screen flex flex-col overflow-hidden">
       <div className="flex justify-between items-center p-2 bg-white border-b flex-shrink-0">
         <SafeScenarioTabs />
-        
         <div className="flex items-center space-x-2">
           <SafeControlButtons />
         </div>
