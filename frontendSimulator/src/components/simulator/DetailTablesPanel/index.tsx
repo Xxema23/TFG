@@ -9,13 +9,10 @@ import { useResizablePanels } from './hooks/useResizablePanels';
 import UseRowSelection from './hooks/useRowSelection';
 import UseTableSync from './hooks/useTableSync';
 import { useFabricacionesContext } from '../../../contexts/FabricacionesContext';
-import { recalculateAffectedWorkOrders, getWeekNumber, DEFAULT_INITIAL_CAPACITY } from '../../ganttWOs/useGanttHooks/UseGanttHooks';
-import { CapacityData } from '../../../interfaces/Capacity';
-import { getCapacities } from '../../../services/CapacityService';
 import { useComponentesDisponibilidad } from '../../../hooks/useComponentesDisponibilidad';
 import { transformComponentesData, calcularConsumoSecuencial } from '../../../services/componentesService';
 
-const ENABLE_CAPACITY_LOGS = false;
+const ENABLE_DEBUG_LOGS = false;
 
 const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date }> = ({
   workOrders = [],
@@ -146,64 +143,44 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
   }, [hasPendingChanges, dataToUse]);
 
   useEffect(() => {
-    const convertWeeklyToDaily = (
-      weeklyCapacities: CapacityData[], 
-      workingDaysArray: string[]
-    ): any[] => {
-      const dailyCapacities: any[] = [];
-      const capacityMap = new Map<string, number>();
-
-      weeklyCapacities.forEach(capacity => {
-        const key = `${capacity.line}-${capacity.week}-${capacity.year}`;
-        capacityMap.set(key, capacity.value);
-      });
-
-      const allLines = Array.from(new Set([
-        ...weeklyCapacities.map(c => c.line),
-        ...fabricacionesFromContext.map(wo => wo.Linea)
-      ]));
-
-      workingDaysArray.forEach(day => {
-        const [year, month, dayNum] = day.split('-').map(Number);
-        const date = new Date(year, month - 1, dayNum);
-        const dayOfWeek = date.getDay();
-        
-        if (dayOfWeek === 0 || dayOfWeek === 6) {
-          return;
-        }
-        
-        const week = getWeekNumber(date);
-
-        allLines.forEach(line => {
-          const key = `${line}-${week}-${year}`;
-          const weeklyCapacity = capacityMap.get(key);
-          
-          const dailyCapacity = weeklyCapacity !== undefined 
-            ? weeklyCapacity 
-            : DEFAULT_INITIAL_CAPACITY;
-
-          dailyCapacities.push({
-            line,
-            date: day,
-            capacity: dailyCapacity
-          });
-        });
-      });
-
-      return dailyCapacities;
-    };
-
     const loadCapacityData = async () => {
       try {
         if (fabricacionesFromContext.length > 0) {
-          const sortedDays = memoizedWorkingDays;
+          setWorkingDays(memoizedWorkingDays);
           
-          setWorkingDays(sortedDays);
+          const { 
+            getBaseCapacities, 
+            getCapacities: getCaps, 
+            buildDailyCapacities 
+          } = await import('../../../services/capacityService');
           
           const currentYear = new Date().getFullYear();
-          const weeklyCapacities = await getCapacities(1, currentYear);
           
-          const dailyCapacities = convertWeeklyToDaily(weeklyCapacities, sortedDays);
+          const baseCapacities = await getBaseCapacities(1);
+          
+          if (ENABLE_DEBUG_LOGS) {
+            console.log('✅ [DetailTablesPanel] Base capacities cargadas:', baseCapacities);
+          }
+          
+          const weeklyCapacities = await getCaps(1, currentYear);
+          
+          if (ENABLE_DEBUG_LOGS) {
+            console.log('✅ [DetailTablesPanel] Capacities semanales cargadas:', weeklyCapacities.length);
+          }
+          
+          const dailyCapacities = buildDailyCapacities(
+            baseCapacities,
+            weeklyCapacities,
+            memoizedWorkingDays
+          );
+          
+          console.log('✅ [DetailTablesPanel] Daily capacities generadas:', dailyCapacities.length);
+          console.log('🔍 [DEBUG] Ejemplo L8 28-ene:', 
+            dailyCapacities.find(c => c.line === 'L8' && c.date === '2026-01-28')
+          );
+          console.log('🔍 [DEBUG] Ejemplo S21 05-ene (semana 1):', 
+            dailyCapacities.find(c => c.line === 'S21' && c.date === '2026-01-05')
+          );
           
           setCapacity(dailyCapacities);
         }
@@ -360,39 +337,25 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
   });
 
   const handleReorderInTable = useCallback((draggedNumWOs: string[], targetNumWO: string) => {
-    console.log('🔄 [REORDEN TABLE] Inicio:', { 
-      draggedNumWOs, 
-      targetNumWO,
-      dataToUseLength: dataToUse.length,
-      capacityLoaded,
-      capacityLength: capacity.length,
-      workingDaysLength: workingDays.length
-    });
+    console.log('🔄 [REORDEN TABLE] Inicio:', { draggedNumWOs, targetNumWO });
 
-    const targetFab = dataToUse.find(f => f.NumWO === targetNumWO);
+    const targetFab = fabricacionesFromContext.find(f => f.NumWO === targetNumWO);
     if (!targetFab) {
-      console.error('❌ Target no encontrado en dataToUse:', targetNumWO);
+      console.error('❌ Target no encontrado');
       return;
     }
 
     const targetDay = targetFab.Fch_Objetivo;
     const targetLine = targetFab.Linea;
 
-    console.log('📍 Target encontrado:', {
-      NumWO: targetNumWO,
-      Linea: targetLine,
-      Dia: targetDay,
-      Secuencia: targetFab.Secuencia
-    });
+    console.log('📍 Target:', { NumWO: targetNumWO, Linea: targetLine, Dia: targetDay });
 
     const draggedFabsOriginal = draggedNumWOs
-      .map(numWO => dataToUse.find(f => f.NumWO === numWO))
+      .map(numWO => fabricacionesFromContext.find(f => f.NumWO === numWO))
       .filter(Boolean);
 
-    console.log('🎯 WOs arrastradas encontradas:', draggedFabsOriginal.length);
-
     if (draggedFabsOriginal.length === 0) {
-      console.error('❌ No se encontraron las WOs arrastradas en dataToUse');
+      console.error('❌ No se encontraron WOs arrastradas');
       return;
     }
 
@@ -402,7 +365,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       Linea: targetLine
     }));
 
-    const existingWosInTarget = dataToUse
+    const existingWosInTarget = fabricacionesFromContext
       .filter(f => 
         f.Fch_Objetivo === targetDay && 
         f.Linea === targetLine &&
@@ -433,7 +396,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       }
     });
 
-    let allFabs = dataToUse.filter(f => {
+    let allFabs = fabricacionesFromContext.filter(f => {
       if (draggedNumWOs.includes(f.NumWO)) return false;
       if (f.Fch_Objetivo === targetDay && f.Linea === targetLine) return false;
       return true;
@@ -457,50 +420,61 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     });
 
     let finalFabs = allFabs;
-    
+
     if (capacityLoaded && capacity.length > 0 && workingDays.length > 0) {
-      console.log('🎯 [REORDEN TABLE] Aplicando CAPACITY desde día del drop hacia adelante...');
+      console.log('🎯 [REORDEN TABLE] Aplicando CAPACITY...');
       
-      const dropDate = targetDay.split('T')[0];
-      const dropDateObj = new Date(dropDate);
-      const draggedNumWOsSet = new Set(draggedNumWOs);
+      const normalizeDate = (date: string) => date.replace(' ', 'T').split('T')[0];
+      const dropDate = normalizeDate(targetDay);
+      const draggedSet = new Set(draggedNumWOs);
+      
+      const affectedDays = new Set<string>();
+      affectedDays.add(dropDate);
+      originalLocations.forEach(loc => {
+        const [day] = loc.split('|');
+        affectedDays.add(normalizeDate(day));
+      });
+      
+      const minAffectedDay = Array.from(affectedDays).sort()[0];
+      
+      console.log('📅 Días afectados:', Array.from(affectedDays));
+      console.log('📅 Día mínimo afectado:', minAffectedDay);
+      
+      const wosBeforeAffected = allFabs.filter(wo => {
+        if (wo.Linea !== targetLine) return true;
+        const woDate = normalizeDate(wo.Fch_Objetivo);
+        return woDate < minAffectedDay;
+      });
       
       const wosToRedistribute = allFabs
         .filter(wo => {
-          if (draggedNumWOsSet.has(wo.NumWO)) return true;
           if (wo.Linea !== targetLine) return false;
-          
-          const woDate = wo.Fch_Objetivo.split('T')[0];
-          const woDateObj = new Date(woDate);
-          
-          return woDateObj >= dropDateObj;
+          const woDate = normalizeDate(wo.Fch_Objetivo);
+          return woDate >= minAffectedDay;
         })
         .sort((a, b) => {
-          const dateCompare = new Date(a.Fch_Objetivo).getTime() - new Date(b.Fch_Objetivo).getTime();
+          const dateCompare = new Date(normalizeDate(a.Fch_Objetivo)).getTime() - 
+                             new Date(normalizeDate(b.Fch_Objetivo)).getTime();
           if (dateCompare !== 0) return dateCompare;
           return a.Secuencia - b.Secuencia;
         });
       
-      const wosToKeepIntact = allFabs.filter(wo => {
-        return !wosToRedistribute.find(w => w.NumWO === wo.NumWO);
-      });
-      
-      console.log(`📦 WOs a redistribuir: ${wosToRedistribute.length}`);
-      console.log(`🔒 WOs intactas: ${wosToKeepIntact.length}`);
+      console.log(`🔒 WOs antes de días afectados: ${wosBeforeAffected.length}`);
+      console.log(`🔄 WOs a redistribuir: ${wosToRedistribute.length}`);
       
       const capacityByDay = new Map<string, number>();
       const dayUsage = new Map<string, number>();
       
       workingDays.forEach(day => {
         const dayCapacity = capacity.find(c => c.date === day && c.line === targetLine);
-        capacityByDay.set(day, dayCapacity?.capacity || DEFAULT_INITIAL_CAPACITY);
+        const fallbackCapacity = capacity.find(c => c.line === targetLine)?.capacity || 8;
+        capacityByDay.set(day, dayCapacity?.capacity || fallbackCapacity);
         dayUsage.set(day, 0);
       });
       
-      wosToKeepIntact.forEach(wo => {
+      wosBeforeAffected.forEach(wo => {
         if (wo.Linea !== targetLine) return;
-        
-        const woDate = wo.Fch_Objetivo.split('T')[0];
+        const woDate = normalizeDate(wo.Fch_Objetivo);
         if (workingDays.includes(woDate)) {
           const woHours = parseFloat(wo.horas_totales_de_la_wo) || 0;
           const currentUsage = dayUsage.get(woDate) || 0;
@@ -508,24 +482,26 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
         }
       });
       
+      console.log('🔧 Pre-carga completada');
+      
       const redistributed: typeof wosToRedistribute = [];
+      let pushedCount = 0;
       
       wosToRedistribute.forEach((wo, idx) => {
         const woHours = parseFloat(wo.horas_totales_de_la_wo) || 0;
         let remainingHours = woHours;
         let assignedToDay: string | null = null;
         
-        let dayIndex = workingDays.findIndex(d => d === dropDate);
+        const originalWODate = normalizeDate(wo.Fch_Objetivo);
+        const startDay = draggedSet.has(wo.NumWO) ? dropDate : originalWODate;
+        
+        let dayIndex = workingDays.findIndex(d => d === startDay);
         
         while (dayIndex < workingDays.length && remainingHours > 0) {
           const currentDay = workingDays[dayIndex];
-          const dayCapacity = capacityByDay.get(currentDay) || DEFAULT_INITIAL_CAPACITY;
+          const dayCapacity = capacityByDay.get(currentDay) || 8;
           const dayUsed = dayUsage.get(currentDay) || 0;
           const availableCapacity = dayCapacity - dayUsed;
-          
-          if (ENABLE_CAPACITY_LOGS) {
-            console.log(`  📅 Día ${currentDay}: Capacidad ${dayCapacity}h, Usado ${dayUsed.toFixed(2)}h, Disponible ${availableCapacity.toFixed(2)}h`);
-          }
           
           if (availableCapacity > 0.01) {
             if (!assignedToDay) {
@@ -536,42 +512,31 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
             dayUsage.set(currentDay, dayUsed + hoursToUse);
             remainingHours -= hoursToUse;
             
-            if (ENABLE_CAPACITY_LOGS) {
-              console.log(`    ✅ Asignando ${hoursToUse.toFixed(2)}h de WO ${wo.NumWO} a ${currentDay}`);
-            }
-            
-            if (remainingHours <= 0.01) {
-              break;
-            }
+            if (remainingHours <= 0.01) break;
           }
           
           dayIndex++;
         }
         
         if (assignedToDay) {
+          if (assignedToDay !== originalWODate) pushedCount++;
+          
           redistributed.push({
             ...wo,
             Fch_Objetivo: assignedToDay,
             Secuencia: idx + 1
           });
-          
-          if (ENABLE_CAPACITY_LOGS) {
-            console.log(`  ✅ WO ${wo.NumWO} (${woHours}h) → ${assignedToDay}`);
-          }
         } else {
-          redistributed.push({
-            ...wo,
-            Secuencia: idx + 1
-          });
-          console.warn(`  ⚠️ WO ${wo.NumWO} no cabía en ningún día disponible`);
+          redistributed.push({ ...wo, Secuencia: idx + 1 });
+          console.warn(`⚠️ WO ${wo.NumWO} no cabía`);
         }
       });
       
-      console.log('✅ [REORDEN TABLE] Redistribución completada:', redistributed.length, 'WOs');
+      console.log(`✅ Redistribución: ${redistributed.length} WOs, ${pushedCount} empujadas`);
       
       const redistributedByDay = new Map<string, typeof redistributed>();
       redistributed.forEach(wo => {
-        const day = wo.Fch_Objetivo.split('T')[0];
+        const day = normalizeDate(wo.Fch_Objetivo);
         if (!redistributedByDay.has(day)) {
           redistributedByDay.set(day, []);
         }
@@ -588,17 +553,18 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
         });
       });
       
+      const wosFromOtherLines = allFabs.filter(wo => wo.Linea !== targetLine);
       const redistributedNumWOs = new Set(redistributedWithCorrectSeq.map(w => w.NumWO));
+      
       finalFabs = [
-        ...wosToKeepIntact.filter(wo => !redistributedNumWOs.has(wo.NumWO)),
+        ...wosFromOtherLines,
+        ...wosBeforeAffected.filter(wo => wo.Linea === targetLine),
         ...redistributedWithCorrectSeq
       ];
       
-      console.log('✅ [REORDEN TABLE] Capacity aplicada. WOs finales:', finalFabs.length);
-      console.log('   🔒 WOs preservadas:', wosToKeepIntact.length);
-      console.log('   🔄 WOs redistribuidas:', redistributedWithCorrectSeq.length);
+      console.log(`✅ WOs finales: ${finalFabs.length}`);
     } else {
-      console.log('⚠️ [REORDEN TABLE] Capacity NO disponible');
+      console.log('⚠️ Capacity NO disponible');
     }
 
     finalFabs.sort((a, b) => {
@@ -611,19 +577,27 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       return a.Secuencia - b.Secuencia;
     });
 
-    console.log('📝 Actualizando contexto con', finalFabs.length, 'fabricaciones');
-
     const contextoActualizado = fabricacionesFromContext.map(fabContext => {
       const fabModificada = finalFabs.find(f => f.NumWO === fabContext.NumWO);
       return fabModificada || fabContext;
     });
 
+    console.log('🔍 [REORDEN TABLE] WO ...678 en finalFabs ANTES de enviar al Context:', 
+  finalFabs.find(f => f.NumWO.endsWith('678'))
+);
+
+console.log('📊 [REORDEN TABLE] Total WOs en finalFabs:', finalFabs.length);
+console.log('📊 [REORDEN TABLE] Primeras 5 WOs:', finalFabs.slice(0, 5).map(f => ({
+  NumWO: f.NumWO,
+  Fch_Objetivo: f.Fch_Objetivo,
+  Secuencia: f.Secuencia
+})));
+
     onGanttOrdersChanged(contextoActualizado);
+    refetchComponentes();
 
     console.log('✅ [REORDEN TABLE] Completado');
-    console.log('🔄 [REORDEN TABLE] Recargando componentes...');
-    refetchComponentes();
-  }, [dataToUse, fabricacionesFromContext, onGanttOrdersChanged, capacityLoaded, capacity, workingDays, refetchComponentes]);
+  }, [fabricacionesFromContext, onGanttOrdersChanged, capacityLoaded, capacity, workingDays, refetchComponentes]);
 
   const handleRowHover = (woId: string | null) => {
     setHoveredRowId(woId);
@@ -740,75 +714,73 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       </div>
 
       <ResizableDivider onMouseDown={handleMouseDown} />
-
-      <div
-        className="flex flex-col h-full overflow-hidden"
-        style={{
-          width: `calc(100% - ${leftWidth} - 2px)`,
-          marginTop: hasPendingChanges ? '80px' : '40px'
-        }}
-      >
-        {componentesColumnas.length > 200 && (
-          <div className="bg-yellow-50 border-b border-yellow-300 px-3 py-2 text-xs text-yellow-800 flex items-center gap-2">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            <span className="font-medium">
-              ⚠️ {componentesColumnas.length} columnas - Usa scroll horizontal o selecciona WOs específicas
-            </span>
-          </div>
-        )}
-
-        <h3 className="font-medium p-2 bg-gray-100 flex-shrink-0 border-b">
-          Detalle Componentes
-          <span className="text-xs text-gray-600 ml-2">
-            - {componentesColumnas.length} artículos
-          </span>
-          {isComponentesLoading && (
-            <span className="text-xs text-blue-600 ml-2">
-              🔄 Cargando...
-            </span>
-          )}
-          {componentesError && (
-            <span className="text-xs text-red-600 ml-2">
-              ❌ Error
-            </span>
-          )}
-        </h3>
-
-        <div
-          ref={rightTableContainerRef}
-          className="flex-1 overflow-y-auto overflow-x-auto"
-        >
-          <ComponentsTable
-            workOrders={visibleWorkOrders}
-            availableComponents={componentesColumnas}
-            componentAvailability={componentesData}
-            hoveredRowId={hoveredRowId}
-            selectedRows={selectedRows}
-            isDragging={false}
-            draggedOverWO={null}
-            rightRowsRef={rightRowsRef}
-            onRowSelection={handleRowSelection}
-            onRowHover={handleRowHover}
-            onDragStart={() => {}}
-            onDragOver={() => {}}
-            onDragEnter={() => {}}
-            onDragLeave={() => {}}
-            onDrop={() => {}}
-            onDragEnd={() => {}}
-            isLoading={isComponentesLoading}
-          />
-        </div>
+    <div
+    className="flex flex-col h-full overflow-hidden"
+    style={{
+      width: `calc(100% - ${leftWidth} - 2px)`,
+      marginTop: hasPendingChanges ? '80px' : '40px'
+    }}
+  >
+    {componentesColumnas.length > 200 && (
+      <div className="bg-yellow-50 border-b border-yellow-300 px-3 py-2 text-xs text-yellow-800 flex items-center gap-2">
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+        </svg>
+        <span className="font-medium">
+          ⚠️ {componentesColumnas.length} columnas - Usa scroll horizontal o selecciona WOs específicas
+        </span>
       </div>
+    )}
 
-      {selectedRows.size > 0 && (
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg">
-          {selectedRows.size} WO{selectedRows.size > 1 ? 's' : ''} seleccionada{selectedRows.size > 1 ? 's' : ''}
-        </div>
+    <h3 className="font-medium p-2 bg-gray-100 flex-shrink-0 border-b">
+      Detalle Componentes
+      <span className="text-xs text-gray-600 ml-2">
+        - {componentesColumnas.length} artículos
+      </span>
+      {isComponentesLoading && (
+        <span className="text-xs text-blue-600 ml-2">
+          🔄 Cargando...
+        </span>
       )}
-    </div>
-  );
-};
+      {componentesError && (
+        <span className="text-xs text-red-600 ml-2">
+          ❌ Error
+        </span>
+      )}
+    </h3>
 
+    <div
+      ref={rightTableContainerRef}
+      className="flex-1 overflow-y-auto overflow-x-auto"
+    >
+      <ComponentsTable
+        workOrders={visibleWorkOrders}
+        availableComponents={componentesColumnas}
+        componentAvailability={componentesData}
+        hoveredRowId={hoveredRowId}
+        selectedRows={selectedRows}
+        isDragging={false}
+        draggedOverWO={null}
+        rightRowsRef={rightRowsRef}
+        onRowSelection={handleRowSelection}
+        onRowHover={handleRowHover}
+        onDragStart={() => {}}
+        onDragOver={() => {}}
+        onDragEnter={() => {}}
+        onDragLeave={() => {}}
+        onDrop={() => {}}
+        onDragEnd={() => {}}
+        isLoading={isComponentesLoading}
+      />
+    </div>
+  </div>
+
+  {selectedRows.size > 0 && (
+    <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg">
+      {selectedRows.size} WO{selectedRows.size > 1 ? 's' : ''} seleccionada{selectedRows.size > 1 ? 's' : ''}
+    </div>
+  )}
+</div>
+);
+};
 export default DetailTablesPanel;

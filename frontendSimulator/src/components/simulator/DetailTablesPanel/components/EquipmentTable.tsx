@@ -1,4 +1,4 @@
-// components/EquipmentTable.tsx - CON LOG DE DEBUG
+// components/EquipmentTable.tsx - VERSIÓN OPTIMIZADA SIN LOGS
 import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { DateEditor } from './DateEditor';
@@ -90,8 +90,6 @@ const EquipmentRow = memo<{
 }) => {
   const ref = useRef<HTMLTableRowElement>(null);
 
-  // ⬇️⬇️⬇️ LOG DE DEBUG AÑADIDO ⬇️⬇️⬇️
-  console.log(`📋 [EquipmentRow] ${wo.numWO}: día=${wo.fchObjetivo?.split('T')[0]}, seq=${wo.secuencia}, linea=${wo.linea}`);
 
   const [{ isDragging }, drag] = useDrag({
     type: 'WORK_ORDER',

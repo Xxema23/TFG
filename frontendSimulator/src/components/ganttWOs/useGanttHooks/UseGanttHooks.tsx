@@ -209,7 +209,7 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
     refetch
   } = useFabricacionesContext();
 
-  const { data, setData, workingDays, setWorkingDays } = useGanttData();
+  const { data, setData, workingDays, setWorkingDays } = useGanttData('shared');
   const { 
     isCapacityModalOpen, 
     setIsCapacityModalOpen, 
@@ -253,48 +253,123 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
   } = useWorkOrderHandlers(data, setData, workingDays, convertWeeklyToDaily, dataRef);
 
   useEffect(() => {
-    if (isRecalculatingRef.current || isHandlingCapacityChangeRef.current) {
-      return;
+  console.log('🔔 [GANTT SYNC] useEffect triggered', {
+    contextLength: fabricacionesFromContext.length,
+    isRecalculating: isRecalculatingRef.current,
+    isHandlingCapacity: isHandlingCapacityChangeRef.current,
+    workingDaysLength: workingDays.length,
+    lastUpdated,
+    timeSinceLastSync: Date.now() - lastSyncTimestampRef.current
+  });
+
+   const wo678FromContext = fabricacionesFromContext.find(w => w.NumWO.endsWith('678'));
+  console.log('🔍 [GANTT SYNC] WO ...678 en fabricacionesFromContext:', {
+    NumWO: wo678FromContext?.NumWO,
+    Fch_Objetivo: wo678FromContext?.Fch_Objetivo,
+    Secuencia: wo678FromContext?.Secuencia
+  });
+
+  console.log('🔍 [GANTT SYNC] Estado de inicialización:', {
+    isRecalculating: isRecalculatingRef.current,
+    isHandlingCapacity: isHandlingCapacityChangeRef.current,
+    hasWorkingDays: workingDays.length > 0,
+    hasDataSource: (filteredWorkOrders && filteredWorkOrders.length > 0) || fabricacionesFromContext.length > 0
+  });
+
+  // ✅ BLOQUEO 1: Si está recalculando o manejando capacidad
+  if (isRecalculatingRef.current || isHandlingCapacityChangeRef.current) {
+    console.log('⛔ [GANTT SYNC] BLOQUEADO por flags');
+    return;
+  }
+
+  const dataSource = filteredWorkOrders && filteredWorkOrders.length > 0 
+    ? filteredWorkOrders 
+    : fabricacionesFromContext;
+
+  // ✅ BLOQUEO 2: No hay datos
+  if (dataSource.length === 0) {
+    console.log('⚠️ [GANTT SYNC] No hay dataSource');
+    return;
+  }
+
+  // ✅ BLOQUEO 3: No hay workingDays todavía
+  if (workingDays.length === 0) {
+    console.log('⚠️ [GANTT SYNC] Esperando workingDays...');
+    return;
+  }
+
+  // ✅ THROTTLE: Evitar múltiples ejecuciones rápidas
+  const now = Date.now();
+  if (now - lastSyncTimestampRef.current < 100) {
+    console.log('⛔ [GANTT SYNC] BLOQUEADO por throttle', {
+      elapsed: now - lastSyncTimestampRef.current
+    });
+    return;
+  }
+  
+  console.log('✅ [GANTT SYNC] Sincronizando...', {
+    dataSourceLength: dataSource.length,
+    primeras3: dataSource.slice(0, 3).map(w => ({
+      NumWO: w.NumWO,
+      Fch_Objetivo: w.Fch_Objetivo,
+      Secuencia: w.Secuencia
+    }))
+  });
+  
+  lastSyncTimestampRef.current = now;
+  
+  const adjustedWorkOrders = dataSource.map((wo) => {
+    const formattedDate = new Date(wo.Fch_Objetivo).toISOString().split("T")[0];
+    if (!workingDays.includes(formattedDate)) {
+      const newStartDay = workingDays.find(day => new Date(day) >= new Date(formattedDate)) || workingDays[0];
+      return { ...wo, Fch_Objetivo: newStartDay };
     }
+    return wo;
+  });
 
-    const dataSource = filteredWorkOrders && filteredWorkOrders.length > 0 
-      ? filteredWorkOrders 
-      : fabricacionesFromContext;
+  const wo678Adjusted = adjustedWorkOrders.find(w => w.NumWO.endsWith('678'));
+  console.log('🔍 [GANTT SYNC] WO ...678 DESPUÉS de adjustedWorkOrders:', {
+    NumWO: wo678Adjusted?.NumWO,
+    Fch_Objetivo: wo678Adjusted?.Fch_Objetivo,
+    Secuencia: wo678Adjusted?.Secuencia
+  });
+  
+  setData(prevData => {
+  // ✅ NUEVA LÓGICA: Si ya hay workOrders, solo actualizar
+  if (prevData && prevData.workOrders && prevData.workOrders.length > 0) {
+    const hasExistingCapacity = prevData.capacity && prevData.capacity.length > 0;
+    
+    console.log('📦 [GANTT SYNC] Actualizando workOrders existentes', {
+      prevWorkOrdersLength: prevData.workOrders.length,
+      newWorkOrdersLength: adjustedWorkOrders.length,
+      capacityLength: prevData.capacity?.length || 0,
+      hasCapacity: hasExistingCapacity
+    });
 
-    if (dataSource.length > 0 && workingDays.length > 0) {
-      const now = Date.now();
-      if (now - lastSyncTimestampRef.current < 100) {
-        return;
-      }
-      
-      lastSyncTimestampRef.current = now;
-      
-      const adjustedWorkOrders = dataSource.map((wo) => {
-        const formattedDate = new Date(wo.Fch_Objetivo).toISOString().split("T")[0];
-        if (!workingDays.includes(formattedDate)) {
-          const newStartDay = workingDays.find(day => new Date(day) >= new Date(formattedDate)) || workingDays[0];
-          return { ...wo, Fch_Objetivo: newStartDay };
-        }
-        return wo;
-      });
+    return {
+      ...prevData,
+      workOrders: adjustedWorkOrders,
+      // ✅ Preservar capacity (puede estar vacía todavía, pero se llenará después)
+    };
+  }
 
-      setData(prevData => {
-        if (!prevData) {
-          return {
-            workOrders: adjustedWorkOrders,
-            capacity: [],
-            nonWorkingDays: []
-          };
-        }
-
-        return {
-          ...prevData,
-          workOrders: adjustedWorkOrders,
-          capacity: prevData.capacity
-        };
-      });
-    }
-  }, [fabricacionesFromContext, workingDays, setData, lastUpdated, filteredWorkOrders]);
+  // ✅ Solo la PRIMERA VEZ (cuando prevData es null O no tiene workOrders)
+  console.log('📦 [GANTT SYNC] Creando data inicial (primera vez)');
+  return {
+    workOrders: adjustedWorkOrders,
+    capacity: [],
+    nonWorkingDays: []
+  };
+});
+}, [
+  fabricacionesFromContext,
+  fabricacionesFromContext.length,
+  workingDays,
+  workingDays.length,
+  setData,
+  lastUpdated,
+  filteredWorkOrders
+]);
 
   const saveChanges = useCallback(async (): Promise<void> => {
     return Promise.resolve();
@@ -491,41 +566,240 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
   );
 
   const stableHandleWorkOrderDrop = useCallback(
-    (info: DropInfo) => {
-      console.log('🎯 [GANTT DROP] Inicio:', info);
+  (info: DropInfo) => {
+    console.log('🎯 [GANTT DROP] Inicio:', info);
 
-      let correctedDay = info.day;
-      
-      if (info.insertBeforeWO && dataRef.current) {
-        const referenceWO = dataRef.current.workOrders.find(
-          wo => wo.NumWO === info.insertBeforeWO
-        );
-        
-        if (referenceWO) {
-          correctedDay = referenceWO.Fch_Objetivo.split('T')[0];
-        }
+    // ✅ 1. Encontrar el target
+    const targetWO = dataRef.current?.workOrders.find(wo => wo.NumWO === info.insertBeforeWO);
+    if (!targetWO) {
+      console.error('❌ Target no encontrado');
+      return;
+    }
+
+    const targetDay = targetWO.Fch_Objetivo.split('T')[0];
+    const targetLine = info.line;
+
+    console.log('📍 Target:', { NumWO: info.insertBeforeWO, Linea: targetLine, Dia: targetDay });
+
+    // ✅ 2. WOs arrastradas
+    const draggedWOs = info.draggedItems
+      .map(numWO => dataRef.current?.workOrders.find(wo => wo.NumWO === numWO))
+      .filter(Boolean);
+
+    if (draggedWOs.length === 0) {
+      console.error('❌ No se encontraron WOs arrastradas');
+      return;
+    }
+
+    // ✅ 3. Mover las WOs al día/línea del target
+    const draggedUpdated = draggedWOs.map(wo => ({
+      ...wo!,
+      Fch_Objetivo: targetDay,
+      Linea: targetLine
+    }));
+
+    // ✅ 4. WOs existentes en el target (sin las arrastradas)
+    const existingInTarget = dataRef.current!.workOrders
+      .filter(wo => 
+        wo.Fch_Objetivo.split('T')[0] === targetDay &&
+        wo.Linea === targetLine &&
+        !info.draggedItems.includes(wo.NumWO)
+      )
+      .sort((a, b) => a.Secuencia - b.Secuencia);
+
+    const targetIdx = existingInTarget.findIndex(wo => wo.NumWO === info.insertBeforeWO);
+    if (targetIdx === -1) {
+      console.error('❌ Target no encontrado en WOs del día');
+      return;
+    }
+
+    // ✅ 5. Insertar ANTES del target
+    const reordered = [
+      ...existingInTarget.slice(0, targetIdx),
+      ...draggedUpdated,
+      ...existingInTarget.slice(targetIdx)
+    ];
+
+    const resequenced = reordered.map((wo, i) => ({ ...wo, Secuencia: i + 1 }));
+
+    // ✅ 6. Locations originales para reordenar
+    const originalLocations = new Set<string>();
+    draggedWOs.forEach(wo => {
+      const originalDay = wo!.Fch_Objetivo.split('T')[0];
+      const originalLine = wo!.Linea;
+      if (originalDay !== targetDay || originalLine !== targetLine) {
+        originalLocations.add(`${originalDay}|${originalLine}`);
       }
+    });
+
+    // ✅ 7. Recomponer TODAS las WOs FILTRADAS
+    let allWOs = dataRef.current!.workOrders.filter(wo => {
+      if (info.draggedItems.includes(wo.NumWO)) return false;
+      if (wo.Fch_Objetivo.split('T')[0] === targetDay && wo.Linea === targetLine) return false;
+      return true;
+    });
+
+    allWOs.push(...resequenced);
+
+    // ✅ 8. Reordenar locations originales
+    originalLocations.forEach(locationKey => {
+      const [day, line] = locationKey.split('|');
+      const wosInOriginal = allWOs
+        .filter(wo => wo.Fch_Objetivo.split('T')[0] === day && wo.Linea === line)
+        .sort((a, b) => a.Secuencia - b.Secuencia);
       
-      originalHandleWorkOrderDrop(correctedDay, info.line, info.insertBeforeWO, info.draggedItems);
+      const reseq = wosInOriginal.map((wo, i) => ({ ...wo, Secuencia: i + 1 }));
+      allWOs = allWOs.map(wo => reseq.find(r => r.NumWO === wo.NumWO) || wo);
+    });
+
+    // ✅ 9. APLICAR CAPACITY
+    let finalWOs = allWOs;
+
+    if (dataRef.current?.capacity && dataRef.current.capacity.length > 0 && workingDaysRef.current.length > 0) {
+      console.log('🎯 [GANTT] Aplicando CAPACITY...');
       
-      setTimeout(() => {
-        if (dataRef.current && dataRef.current.workOrders.length > 0) {
-          const redistributedWOs = redistributeWithCapacity(
-            dataRef.current.workOrders,
-            info.line,
-            correctedDay,
-            info.draggedItems  // ✅ PASAR LAS WOs ARRASTRADAS
-          );
-          
-          onGanttOrdersChanged(redistributedWOs);
-          console.log('✅ [GANTT DROP] Completado');
-        } else {
-          console.error('❌ dataRef.current vacío');
+      const normalizeDate = (date: string) => date.replace(' ', 'T').split('T')[0];
+      const dropDate = normalizeDate(targetDay);
+      const draggedSet = new Set(info.draggedItems);
+      
+      const affectedDays = new Set<string>();
+      affectedDays.add(dropDate);
+      originalLocations.forEach(loc => {
+        const [day] = loc.split('|');
+        affectedDays.add(normalizeDate(day));
+      });
+      
+      const minAffectedDay = Array.from(affectedDays).sort()[0];
+      
+      const wosBeforeAffected = allWOs.filter(wo => {
+        if (wo.Linea !== targetLine) return true;
+        return normalizeDate(wo.Fch_Objetivo) < minAffectedDay;
+      });
+      
+      const wosToRedistribute = allWOs
+        .filter(wo => {
+          if (wo.Linea !== targetLine) return false;
+          return normalizeDate(wo.Fch_Objetivo) >= minAffectedDay;
+        })
+        .sort((a, b) => {
+          const dateCompare = new Date(normalizeDate(a.Fch_Objetivo)).getTime() - 
+                             new Date(normalizeDate(b.Fch_Objetivo)).getTime();
+          if (dateCompare !== 0) return dateCompare;
+          return a.Secuencia - b.Secuencia;
+        });
+      
+      const capacityByDay = new Map<string, number>();
+      const dayUsage = new Map<string, number>();
+      
+      workingDaysRef.current.forEach(day => {
+        const dayCapacity = dataRef.current!.capacity.find(c => c.date === day && c.line === targetLine);
+        const fallback = dataRef.current!.capacity.find(c => c.line === targetLine)?.capacity || 8;
+        capacityByDay.set(day, dayCapacity?.capacity || fallback);
+        dayUsage.set(day, 0);
+      });
+      
+      wosBeforeAffected.forEach(wo => {
+        if (wo.Linea !== targetLine) return;
+        const woDate = normalizeDate(wo.Fch_Objetivo);
+        if (workingDaysRef.current.includes(woDate)) {
+          const woHours = parseFloat(wo.horas_totales_de_la_wo) || 0;
+          const currentUsage = dayUsage.get(woDate) || 0;
+          dayUsage.set(woDate, currentUsage + woHours);
         }
-      }, 100);
-    },
-    [originalHandleWorkOrderDrop, onGanttOrdersChanged, redistributeWithCapacity]
-  );
+      });
+      
+      const redistributed: typeof wosToRedistribute = [];
+      
+      wosToRedistribute.forEach((wo, idx) => {
+        const woHours = parseFloat(wo.horas_totales_de_la_wo) || 0;
+        let remainingHours = woHours;
+        let assignedToDay: string | null = null;
+        
+        const originalWODate = normalizeDate(wo.Fch_Objetivo);
+        const startDay = draggedSet.has(wo.NumWO) ? dropDate : originalWODate;
+        
+        let dayIndex = workingDaysRef.current.findIndex(d => d === startDay);
+        
+        while (dayIndex < workingDaysRef.current.length && remainingHours > 0) {
+          const currentDay = workingDaysRef.current[dayIndex];
+          const dayCapacity = capacityByDay.get(currentDay) || 8;
+          const dayUsed = dayUsage.get(currentDay) || 0;
+          const availableCapacity = dayCapacity - dayUsed;
+          
+          if (availableCapacity > 0.01) {
+            if (!assignedToDay) assignedToDay = currentDay;
+            const hoursToUse = Math.min(remainingHours, availableCapacity);
+            dayUsage.set(currentDay, dayUsed + hoursToUse);
+            remainingHours -= hoursToUse;
+            if (remainingHours <= 0.01) break;
+          }
+          dayIndex++;
+        }
+        
+        if (assignedToDay) {
+          redistributed.push({
+            ...wo,
+            Fch_Objetivo: assignedToDay,
+            Secuencia: idx + 1
+          });
+        } else {
+          redistributed.push({ ...wo, Secuencia: idx + 1 });
+        }
+      });
+      
+      const redistributedByDay = new Map<string, typeof redistributed>();
+      redistributed.forEach(wo => {
+        const day = normalizeDate(wo.Fch_Objetivo);
+        if (!redistributedByDay.has(day)) redistributedByDay.set(day, []);
+        redistributedByDay.get(day)!.push(wo);
+      });
+      
+      const redistributedWithCorrectSeq: typeof redistributed = [];
+      redistributedByDay.forEach(wosInDay => {
+        wosInDay.forEach((wo, dayIndex) => {
+          redistributedWithCorrectSeq.push({ ...wo, Secuencia: dayIndex + 1 });
+        });
+      });
+      
+      const wosFromOtherLines = allWOs.filter(wo => wo.Linea !== targetLine);
+      
+      finalWOs = [
+        ...wosFromOtherLines,
+        ...wosBeforeAffected.filter(wo => wo.Linea === targetLine),
+        ...redistributedWithCorrectSeq
+      ];
+    }
+
+    // ✅ 10. Ordenar
+    finalWOs.sort((a, b) => {
+      const dateCompare = new Date(a.Fch_Objetivo).getTime() - new Date(b.Fch_Objetivo).getTime();
+      if (dateCompare !== 0) return dateCompare;
+      const lineCompare = a.Linea.localeCompare(b.Linea);
+      if (lineCompare !== 0) return lineCompare;
+      return a.Secuencia - b.Secuencia;
+    });
+
+    // ✅ 11. MERGE con TODAS las WOs del Context (FIX CRÍTICO)
+    const allContextWOs = fabricacionesFromContext;
+    const modifiedNumWOs = new Set(finalWOs.map(wo => wo.NumWO));
+    
+    // WOs del Context que NO fueron modificadas (otras líneas, WOs fuera del filtro, etc.)
+    const unchangedWOs = allContextWOs.filter(wo => !modifiedNumWOs.has(wo.NumWO));
+    
+    // Combinar: WOs modificadas + WOs sin cambios
+    const completeUpdate = [...unchangedWOs, ...finalWOs];
+    
+    console.log('📦 [GANTT DROP] Enviando al Context:', {
+      totalWOs: completeUpdate.length,
+      modificadas: finalWOs.length,
+      sinCambios: unchangedWOs.length
+    });
+
+    onGanttOrdersChanged(completeUpdate);
+    console.log('✅ [GANTT DROP] Completado');
+  },
+  [onGanttOrdersChanged, fabricacionesFromContext]  // ✅ Añadir dependencia
+);
 
   const handleSaveCapacity = useCallback(
     async (
@@ -659,7 +933,7 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
         setIsCapacityReady(true);
       });
     }
-  }, [workingDays.length, data?.workOrders?.length, loadCapacitiesFromService]);
+  }, [workingDays.length, data?.workOrders?.length]); 
 
   return {
     data,

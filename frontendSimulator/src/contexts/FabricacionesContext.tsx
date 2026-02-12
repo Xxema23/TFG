@@ -118,6 +118,12 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
   }, []);
 
   const onGanttOrdersChanged = useCallback((reorderedOrders: IFabricacionConHoras[], fromCapacity = false) => {
+
+    console.log('📦 [CONTEXT] onGanttOrdersChanged recibió:', reorderedOrders.length, 'WOs');
+  console.log('📦 [CONTEXT] WO ...678 recibida:', 
+    reorderedOrders.find(wo => wo.NumWO.endsWith('678'))
+  );
+
     setFabricaciones(prevFabs => {
       const updatedWOsMap = new Map<string, IFabricacionConHoras>();
       reorderedOrders.forEach(wo => updatedWOsMap.set(wo.NumWO, wo));

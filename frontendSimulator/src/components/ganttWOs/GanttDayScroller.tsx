@@ -123,6 +123,19 @@ const GanttDayScroller: React.FC<GanttDayScrollerProps> = ({
     sortedWorkOrders.forEach(workOrder => {
       const startDay = normalizeFecha(workOrder.Fch_Objetivo);
       const startDayindex = dayIndexMap.get(startDay);
+
+      if (workOrder.NumWO.endsWith('678')) {
+  console.log('🔎 DEBUG WO ...678:', {
+    NumWO: workOrder.NumWO,
+    Fch_Objetivo_RAW: workOrder.Fch_Objetivo,
+    startDay_Normalizado: startDay,
+    startDayindex: startDayindex,
+    dayIndexMap_tiene_2026_02_03: dayIndexMap.has('2026-02-03'),
+    dayIndexMap_tiene_2026_02_04: dayIndexMap.has('2026-02-04'),
+    days_primeros5: days.slice(0, 5),
+    dayIndexMap_entries: Array.from(dayIndexMap.entries()).slice(0, 5)
+  });
+}
       
       // ⬇️⬇️⬇️ LOG CRÍTICO: WO SALTADA CON ANÁLISIS DE CARACTERES ⬇️⬇️⬇️
       if (startDayindex === undefined) {
