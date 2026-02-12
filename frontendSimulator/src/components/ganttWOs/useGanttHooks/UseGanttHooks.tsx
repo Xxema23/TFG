@@ -7,6 +7,7 @@ import { DropInfo, GanttData } from "./Types";
 import { CapacityData } from "../../../interfaces/Capacity";
 import { IFabricacionConHoras } from "../../../interfaces/IFabricacionConHoras";
 import DropMonitor from "../DropMonitor";
+import { useCapacity } from '../../../contexts/CapacityContext';
 
 const DEBUG_MODE = false;
 const ENABLE_CAPACITY_LOGS = true;
@@ -209,7 +210,15 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
     refetch
   } = useFabricacionesContext();
 
-  const { data, setData, workingDays, setWorkingDays } = useGanttData('shared');
+  const { 
+    dailyCapacities: capacitiesFromContext,
+    workingDays: workingDaysFromContext,
+    isLoading: capacityContextLoading,
+    refresh: refreshCapacities
+  } = useCapacity();
+
+  const { data, setData, setWorkingDays } = useGanttData('shared');
+  const workingDays = workingDaysFromContext;
   const { 
     isCapacityModalOpen, 
     setIsCapacityModalOpen, 
@@ -819,46 +828,13 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
         
         try {
           await refetch();
+    
+          await refreshCapacities();
           
-          const { 
-            getBaseCapacities, 
-            getCapacities, 
-            buildDailyCapacities 
-          } = await import('../../../services/capacityService');
+          await new Promise(resolve => setTimeout(resolve, 300));
           
-          const currentYear = new Date().getFullYear();
-          const years = [currentYear - 1, currentYear, currentYear + 1];
-          
-          const baseCapacities = await getBaseCapacities(1);
-          
-          const allWeeklyCapacities = [];
-          for (const year of years) {
-            const yearCaps = await getCapacities(1, year);
-            allWeeklyCapacities.push(...yearCaps);
-          }
-          
-          const extendedWorkingDays: string[] = [];
-          const today = new Date();
-          const startDate = new Date(today);
-          startDate.setDate(today.getDate() - 7);
-          const endDate = new Date(today);
-          endDate.setDate(today.getDate() + 120);
-
-          let currentDate = new Date(startDate);
-          while (currentDate <= endDate) {
-            const dayOfWeek = currentDate.getDay();
-            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-              const dateStr = currentDate.toISOString().split("T")[0];
-              extendedWorkingDays.push(dateStr);
-            }
-            currentDate.setDate(currentDate.getDate() + 1);
-          }
-          
-          const dailyCapacities = buildDailyCapacities(
-            baseCapacities,
-            allWeeklyCapacities,
-            extendedWorkingDays
-          );
+          const dailyCapacities = capacitiesFromContext;
+          const extendedWorkingDays = workingDaysFromContext;
           
           if (dataRef.current) {
             dataRef.current = {
@@ -922,18 +898,26 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
 
   useEffect(() => {
     if (
-      workingDays.length > 0 && 
+      capacitiesFromContext.length > 0 && 
       data?.workOrders && 
       !isHandlingCapacityChangeRef.current &&
       !hasLoadedCapacityRef.current
     ) {
       hasLoadedCapacityRef.current = true;
       
-      loadCapacitiesFromService(1).then(() => {
-        setIsCapacityReady(true);
+      console.log('🔄 [GANTT] Sincronizando capacities desde Context a data');
+      
+      setData(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          capacity: capacitiesFromContext
+        };
       });
+      
+      setIsCapacityReady(true);
     }
-  }, [workingDays.length, data?.workOrders?.length]); 
+  }, [capacitiesFromContext.length, data?.workOrders?.length, setData]);
 
   return {
     data,

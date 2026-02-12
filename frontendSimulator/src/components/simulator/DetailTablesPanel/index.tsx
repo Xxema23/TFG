@@ -11,6 +11,7 @@ import UseTableSync from './hooks/useTableSync';
 import { useFabricacionesContext } from '../../../contexts/FabricacionesContext';
 import { useComponentesDisponibilidad } from '../../../hooks/useComponentesDisponibilidad';
 import { transformComponentesData, calcularConsumoSecuencial } from '../../../services/componentesService';
+import { useCapacity } from '../../../contexts/CapacityContext';
 
 const ENABLE_DEBUG_LOGS = false;
 
@@ -29,9 +30,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 }) => {
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const [lastModifiedDay, setLastModifiedDay] = useState<string | null>(null);
-  const [capacity, setCapacity] = useState<any[]>([]);
-  const [workingDays, setWorkingDays] = useState<string[]>([]);
-  const [capacityLoaded, setCapacityLoaded] = useState(false);
+  const { dailyCapacities: capacity, workingDays } = useCapacity();
 
   const {
     fabricaciones: fabricacionesFromContext,
@@ -141,67 +140,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       setLastModifiedDay(sortedByDate[0]?.Fch_Objetivo || null);
     }
   }, [hasPendingChanges, dataToUse]);
-
-  useEffect(() => {
-    const loadCapacityData = async () => {
-      try {
-        if (fabricacionesFromContext.length > 0) {
-          setWorkingDays(memoizedWorkingDays);
-          
-          const { 
-            getBaseCapacities, 
-            getCapacities: getCaps, 
-            buildDailyCapacities 
-          } = await import('../../../services/capacityService');
-          
-          const currentYear = new Date().getFullYear();
-          
-          const baseCapacities = await getBaseCapacities(1);
-          
-          if (ENABLE_DEBUG_LOGS) {
-            console.log('✅ [DetailTablesPanel] Base capacities cargadas:', baseCapacities);
-          }
-          
-          const weeklyCapacities = await getCaps(1, currentYear);
-          
-          if (ENABLE_DEBUG_LOGS) {
-            console.log('✅ [DetailTablesPanel] Capacities semanales cargadas:', weeklyCapacities.length);
-          }
-          
-          const dailyCapacities = buildDailyCapacities(
-            baseCapacities,
-            weeklyCapacities,
-            memoizedWorkingDays
-          );
-          
-          console.log('✅ [DetailTablesPanel] Daily capacities generadas:', dailyCapacities.length);
-          console.log('🔍 [DEBUG] Ejemplo L8 28-ene:', 
-            dailyCapacities.find(c => c.line === 'L8' && c.date === '2026-01-28')
-          );
-          console.log('🔍 [DEBUG] Ejemplo S21 05-ene (semana 1):', 
-            dailyCapacities.find(c => c.line === 'S21' && c.date === '2026-01-05')
-          );
-          
-          setCapacity(dailyCapacities);
-        }
-        
-        setCapacityLoaded(true);
-      } catch (error) {
-        console.error('❌ [DetailTablesPanel] Error cargando capacity:', error);
-        setCapacityLoaded(false);
-      }
-    };
-
-    if (fabricacionesFromContext.length > 0 && !capacityLoaded) {
-      loadCapacityData();
-    }
-  }, [fabricacionesFromContext.length, capacityLoaded, memoizedWorkingDays]);
-
-  useEffect(() => {
-    if (capacityLoaded && capacity.length === 0 && fabricacionesFromContext.length > 0) {
-      setCapacityLoaded(false);
-    }
-  }, [capacityLoaded, capacity.length, fabricacionesFromContext.length]);
 
   const enrichedWorkOrders = useMemo(() => {
     if (!dataToUse.length) {
@@ -421,7 +359,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 
     let finalFabs = allFabs;
 
-    if (capacityLoaded && capacity.length > 0 && workingDays.length > 0) {
+    if (capacity.length > 0 && workingDays.length > 0) {
       console.log('🎯 [REORDEN TABLE] Aplicando CAPACITY...');
       
       const normalizeDate = (date: string) => date.replace(' ', 'T').split('T')[0];
@@ -597,7 +535,7 @@ console.log('📊 [REORDEN TABLE] Primeras 5 WOs:', finalFabs.slice(0, 5).map(f 
     refetchComponentes();
 
     console.log('✅ [REORDEN TABLE] Completado');
-  }, [fabricacionesFromContext, onGanttOrdersChanged, capacityLoaded, capacity, workingDays, refetchComponentes]);
+  }, [fabricacionesFromContext, onGanttOrdersChanged, capacity, workingDays, refetchComponentes]);
 
   const handleRowHover = (woId: string | null) => {
     setHoveredRowId(woId);

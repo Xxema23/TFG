@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { IFabricacionConHoras } from '../interfaces/IFabricacionConHoras';
 import { getFabricacionesConHoras, updateFabricacionConHoras } from '../services/FabricacionConHoras';
+import { CapacityProvider } from './CapacityContext';
 
 const DEBUG_MODE = false;
 
@@ -249,9 +250,11 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
   };
 
   return (
-    <FabricacionesContext.Provider value={value}>
-      {children}
-    </FabricacionesContext.Provider>
+    <CapacityProvider>
+      <FabricacionesContext.Provider value={value}>
+        {children}
+      </FabricacionesContext.Provider>
+    </CapacityProvider>
   );
 };
 
