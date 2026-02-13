@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useMemo } from 'react';
 import { IFabricacionConHoras } from '../interfaces/IFabricacionConHoras';
 import { getFabricacionesConHoras, updateFabricacionConHoras } from '../services/FabricacionConHoras';
 import { CapacityProvider } from './CapacityContext';
@@ -11,24 +11,30 @@ interface PendingChange {
   timestamp: Date;
 }
 
-interface FabricacionesContextType {
+// ✅ NUEVO: Separar datos de acciones
+interface FabricacionesDataType {
   fabricaciones: IFabricacionConHoras[];
   isLoading: boolean;
   error: Error | null;
+  hasPendingChanges: boolean;
+  lastUpdated: Date | null;
+  pendingChanges: Map<string, PendingChange>;
+}
+
+interface FabricacionesActionsType {
   refetch: () => Promise<void>;
   updateFabricaciones: (newFabricaciones: IFabricacionConHoras[]) => void;
   updateSingleFabricacion: (woId: string, updatedData: Partial<IFabricacionConHoras>) => void;
   onGanttOrdersChanged: (reorderedOrders: IFabricacionConHoras[], fromCapacity?: boolean) => void;
   onGanttOrderSaved: () => Promise<void>;
-  hasPendingChanges: boolean;
   setHasPendingChanges: (has: boolean) => void;
-  lastUpdated: Date | null;
-  pendingChanges: Map<string, PendingChange>;
   savePendingChanges: () => Promise<{ success: boolean; saved: number; failed: number; errors: Array<{ NumWO: string; error: string }> }>;
   discardPendingChanges: () => void;
 }
 
-const FabricacionesContext = createContext<FabricacionesContextType | null>(null);
+// ✅ NUEVO: Dos Contexts separados
+const FabricacionesDataContext = createContext<FabricacionesDataType | null>(null);
+const FabricacionesActionsContext = createContext<FabricacionesActionsType | null>(null);
 
 interface FabricacionesProviderProps {
   children: ReactNode;
@@ -119,11 +125,10 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
   }, []);
 
   const onGanttOrdersChanged = useCallback((reorderedOrders: IFabricacionConHoras[], fromCapacity = false) => {
-
     console.log('📦 [CONTEXT] onGanttOrdersChanged recibió:', reorderedOrders.length, 'WOs');
-  console.log('📦 [CONTEXT] WO ...678 recibida:', 
-    reorderedOrders.find(wo => wo.NumWO.endsWith('678'))
-  );
+    console.log('📦 [CONTEXT] WO ...678 recibida:', 
+      reorderedOrders.find(wo => wo.NumWO.endsWith('678'))
+    );
 
     setFabricaciones(prevFabs => {
       const updatedWOsMap = new Map<string, IFabricacionConHoras>();
@@ -232,36 +237,72 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
     }
   }, []);
 
-  const value: FabricacionesContextType = {
+  // ✅ NUEVO: Memoizar DATA (solo cambia cuando cambian los datos)
+  const dataValue = useMemo<FabricacionesDataType>(() => ({
     fabricaciones,
     isLoading,
     error,
+    hasPendingChanges,
+    lastUpdated,
+    pendingChanges
+  }), [fabricaciones, isLoading, error, hasPendingChanges, lastUpdated, pendingChanges]);
+
+  // ✅ NUEVO: Memoizar ACTIONS (nunca cambia porque todas son useCallback)
+  const actionsValue = useMemo<FabricacionesActionsType>(() => ({
     refetch,
     updateFabricaciones,
     updateSingleFabricacion,
     onGanttOrdersChanged,
     onGanttOrderSaved,
-    hasPendingChanges,
     setHasPendingChanges,
-    lastUpdated,
-    pendingChanges,
     savePendingChanges,
     discardPendingChanges
-  };
+  }), [
+    refetch,
+    updateFabricaciones,
+    updateSingleFabricacion,
+    onGanttOrdersChanged,
+    onGanttOrderSaved,
+    savePendingChanges,
+    discardPendingChanges
+  ]);
 
   return (
     <CapacityProvider>
-      <FabricacionesContext.Provider value={value}>
-        {children}
-      </FabricacionesContext.Provider>
+      <FabricacionesActionsContext.Provider value={actionsValue}>
+        <FabricacionesDataContext.Provider value={dataValue}>
+          {children}
+        </FabricacionesDataContext.Provider>
+      </FabricacionesActionsContext.Provider>
     </CapacityProvider>
   );
 };
 
-export const useFabricacionesContext = () => {
-  const context = useContext(FabricacionesContext);
+// ✅ NUEVO: Hook para obtener solo DATA
+export const useFabricacionesData = () => {
+  const context = useContext(FabricacionesDataContext);
   if (!context) {
-    throw new Error('useFabricacionesContext debe usarse dentro de FabricacionesProvider');
+    throw new Error('useFabricacionesData debe usarse dentro de FabricacionesProvider');
   }
   return context;
+};
+
+// ✅ NUEVO: Hook para obtener solo ACTIONS
+export const useFabricacionesActions = () => {
+  const context = useContext(FabricacionesActionsContext);
+  if (!context) {
+    throw new Error('useFabricacionesActions debe usarse dentro de FabricacionesProvider');
+  }
+  return context;
+};
+
+// ✅ MANTENER: Hook legacy para compatibilidad (combina ambos)
+export const useFabricacionesContext = () => {
+  const data = useFabricacionesData();
+  const actions = useFabricacionesActions();
+  
+  return {
+    ...data,
+    ...actions
+  };
 };
