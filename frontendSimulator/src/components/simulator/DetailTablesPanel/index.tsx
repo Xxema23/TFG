@@ -12,6 +12,8 @@ import { useFabricacionesContext } from '../../../contexts/FabricacionesContext'
 import { useComponentesDisponibilidad } from '../../../hooks/useComponentesDisponibilidad';
 import { transformComponentesData, calcularConsumoSecuencial } from '../../../services/componentesService';
 import { useCapacity } from '../../../contexts/CapacityContext';
+import { useFabricacionesData, useFabricacionesActions } from '../../../contexts/FabricacionesContext';
+
 
 const ENABLE_DEBUG_LOGS = false;
 
@@ -33,11 +35,14 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
   const { dailyCapacities: capacity, workingDays } = useCapacity();
 
   const {
-    fabricaciones: fabricacionesFromContext,
-    updateSingleFabricacion,
-    onGanttOrdersChanged,
+  fabricaciones: fabricacionesFromContext,
     hasPendingChanges
-  } = useFabricacionesContext();
+  } = useFabricacionesData();
+
+  const {
+    updateSingleFabricacion,
+    onGanttOrdersChanged
+  } = useFabricacionesActions();
 
   const {
     data: fabricacionesConHoras = [],
@@ -82,10 +87,11 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     
     return allWorkingDays;
   }, [
+    // ✅ OPTIMIZADO: Solo longitud, primer y último elemento
     fabricacionesFromContext.length,
-    fabricacionesFromContext.map(f => f.Fch_Objetivo).join(',')
+    fabricacionesFromContext[0]?.Fch_Objetivo,
+    fabricacionesFromContext[fabricacionesFromContext.length - 1]?.Fch_Objetivo
   ]);
-
   const dataToUse = useMemo(() => {
     if (useFilteredData && filteredFabrications.length > 0) {
       return filteredFabrications;
@@ -179,18 +185,27 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     
     return enriched;
   }, [
+    // ✅ OPTIMIZADO: Solo longitud y elementos clave
     dataToUse.length,
     dataToUse[0]?.NumWO,
+    dataToUse[0]?.Secuencia,
     dataToUse[dataToUse.length - 1]?.NumWO,
-    dataToUse.map(d => `${d.NumWO}-${d.Secuencia}`).join(',')
+    dataToUse[dataToUse.length - 1]?.Secuencia
   ]);
 
   const workOrdersSignature = useMemo(() => {
-    return enrichedWorkOrders.map(wo => `${wo.numWO}-${wo.linea}-${wo.secuencia}`).join('|');
+    if (enrichedWorkOrders.length === 0) return '';
+    
+    const first = enrichedWorkOrders[0];
+    const last = enrichedWorkOrders[enrichedWorkOrders.length - 1];
+    
+    return `${enrichedWorkOrders.length}|${first?.numWO}-${first?.secuencia}|${last?.numWO}-${last?.secuencia}`;
   }, [
     enrichedWorkOrders.length,
     enrichedWorkOrders[0]?.numWO,
-    enrichedWorkOrders[enrichedWorkOrders.length - 1]?.numWO
+    enrichedWorkOrders[0]?.secuencia,
+    enrichedWorkOrders[enrichedWorkOrders.length - 1]?.numWO,
+    enrichedWorkOrders[enrichedWorkOrders.length - 1]?.secuencia
   ]);
 
   const componentesSignature = useMemo(() => {

@@ -8,6 +8,8 @@ import { CapacityData } from "../../../interfaces/Capacity";
 import { IFabricacionConHoras } from "../../../interfaces/IFabricacionConHoras";
 import DropMonitor from "../DropMonitor";
 import { useCapacity } from '../../../contexts/CapacityContext';
+import { useFabricacionesData, useFabricacionesActions } from '../../../contexts/FabricacionesContext';
+
 
 const DEBUG_MODE = false;
 const ENABLE_CAPACITY_LOGS = true;
@@ -202,13 +204,16 @@ export const recalculateAffectedWorkOrders = (
 export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
   const { 
     fabricaciones: fabricacionesFromContext,
+    hasPendingChanges: contextHasPendingChanges,
+    lastUpdated
+  } = useFabricacionesData();
+
+  const {
     onGanttOrdersChanged,
     onGanttOrderSaved,
     setHasPendingChanges,
-    hasPendingChanges: contextHasPendingChanges,
-    lastUpdated,
     refetch
-  } = useFabricacionesContext();
+  } = useFabricacionesActions();
 
   const { 
     dailyCapacities: capacitiesFromContext,
