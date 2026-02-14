@@ -39,37 +39,16 @@ const GanttDayScroller: React.FC<GanttDayScrollerProps> = ({
     return colors[numericValue % colors.length];
   }, []);
 
-  // ⬇️ FALLBACK solo si capacity está completamente vacía
   const FALLBACK_CAPACITY = 1000000;
 
   const capacityByDay = useMemo(() => {
     const lineCapacity = capacity.filter(cap => cap.line === line || cap.line === "*");
     const capacityMap = new Map<string, number>();
     
-    console.log(`📊 [GanttDayScroller] Capacity para línea ${line}:`, {
-      totalCapacities: capacity.length,
-      lineCapacities: lineCapacity.length,
-      primeras3: lineCapacity.slice(0, 3).map(c => ({
-        date: c.date,
-        line: c.line,
-        capacity: c.capacity
-      }))
-    });
-    
     days.forEach((day) => {
       const customCapacity = lineCapacity.find((cap) => cap.date === day)?.capacity;
-      
-      // Solo usar fallback si NO existe capacity para ese día
       const finalCapacity = customCapacity !== undefined ? customCapacity : FALLBACK_CAPACITY;
       capacityMap.set(day, finalCapacity);
-    });
-    
-    console.log(`🗺️ [GanttDayScroller] CapacityByDay generado:`, {
-      totalDays: days.length,
-      primeros3Days: days.slice(0, 3).map(day => ({
-        day,
-        capacity: capacityMap.get(day)
-      }))
     });
     
     return capacityMap;
@@ -89,13 +68,6 @@ const GanttDayScroller: React.FC<GanttDayScrollerProps> = ({
       return [];
     }
 
-    // ⬇️⬇️⬇️ LOG CRÍTICO: DÍAS RECIBIDOS ⬇️⬇️⬇️
-    console.log('🗓️ [GanttDayScroller] DAYS recibidos:', {
-      total: days.length,
-      primeros5: days.slice(0, 5),
-      ultimos3: days.slice(-3)
-    });
-
     const dayIndexMap = new Map(days.map((day, index) => [day, index]));
 
     const sortedWorkOrders = [...workOrders].sort((a, b) => {
@@ -104,60 +76,15 @@ const GanttDayScroller: React.FC<GanttDayScrollerProps> = ({
       return dateA - dateB || a.Secuencia - b.Secuencia;
     });
 
-    // ⬇️⬇️⬇️ LOG CRÍTICO: WOs A PROCESAR ⬇️⬇️⬇️
-    console.log('📦 [GanttDayScroller] WOs a procesar:', {
-      total: sortedWorkOrders.length,
-      primeras5: sortedWorkOrders.slice(0, 5).map(wo => ({
-        NumWO: wo.NumWO,
-        Fch_Objetivo: wo.Fch_Objetivo,
-        Secuencia: wo.Secuencia
-      }))
-    });
-
     const blocks: WorkOrderBlock[] = [];
     const dayUsage = new Map<string, number>();
     days.forEach(day => dayUsage.set(day, 0));
 
-    let skippedCount = 0;
-
     sortedWorkOrders.forEach(workOrder => {
       const startDay = normalizeFecha(workOrder.Fch_Objetivo);
       const startDayindex = dayIndexMap.get(startDay);
-
-      if (workOrder.NumWO.endsWith('678')) {
-  console.log('🔎 DEBUG WO ...678:', {
-    NumWO: workOrder.NumWO,
-    Fch_Objetivo_RAW: workOrder.Fch_Objetivo,
-    startDay_Normalizado: startDay,
-    startDayindex: startDayindex,
-    dayIndexMap_tiene_2026_02_03: dayIndexMap.has('2026-02-03'),
-    dayIndexMap_tiene_2026_02_04: dayIndexMap.has('2026-02-04'),
-    days_primeros5: days.slice(0, 5),
-    dayIndexMap_entries: Array.from(dayIndexMap.entries()).slice(0, 5)
-  });
-}
       
-      // ⬇️⬇️⬇️ LOG CRÍTICO: WO SALTADA CON ANÁLISIS DE CARACTERES ⬇️⬇️⬇️
       if (startDayindex === undefined) {
-        skippedCount++;
-        if (skippedCount <= 5) { // Solo loggear las primeras 5 para no saturar
-          console.log('⚠️ [GanttDayScroller] WO SALTADA - ANÁLISIS DETALLADO:', {
-            NumWO: workOrder.NumWO,
-            Fch_Objetivo: workOrder.Fch_Objetivo,
-            startDayNormalizado: startDay,
-            startDayLength: startDay.length,
-            startDayCharCodes: Array.from(startDay).map(c => c.charCodeAt(0)),
-            daysDisponiblesPrimeros3: days.slice(0, 3),
-            primerDiaLength: days[0]?.length,
-            primerDiaCharCodes: days[0] ? Array.from(days[0]).map(c => c.charCodeAt(0)) : [],
-            segundoDiaLength: days[1]?.length,
-            segundoDiaCharCodes: days[1] ? Array.from(days[1]).map(c => c.charCodeAt(0)) : [],
-            dayIndexMapHas: dayIndexMap.has(startDay),
-            dayIndexMapSize: dayIndexMap.size,
-            comparisonConPrimerDia: startDay === days[0],
-            comparisonConSegundoDia: startDay === days[1]
-          });
-        }
         return;
       }
 
@@ -206,21 +133,6 @@ const GanttDayScroller: React.FC<GanttDayScrollerProps> = ({
       });
     });
 
-    // ⬇️⬇️⬇️ LOG RESUMEN FINAL ⬇️⬇️⬇️
-    console.log(`🎨 [GanttDayScroller] RESUMEN FINAL:`, {
-      totalWOsRecibidas: sortedWorkOrders.length,
-      totalWOsSaltadas: skippedCount,
-      totalBlocksGenerados: blocks.length,
-      primeros3Blocks: blocks.slice(0, 3).map(b => ({
-        NumWO: b.workOrder.NumWO,
-        width: b.width,
-        left: b.left,
-        horasWO: b.workOrder.horas_totales_de_la_wo,
-        startDay: days[b.startDay],
-        dailyCapacity: capacityByDay.get(days[b.startDay])
-      }))
-    });
-
     return blocks;
   }, [workOrders, days, capacityByDay, dayWidth, getColorForWO, normalizeFecha]);
 
@@ -253,18 +165,11 @@ const GanttDayScroller: React.FC<GanttDayScrollerProps> = ({
   );
 };
 
-// ⬇️⬇️⬇️ COMPARACIÓN MÁS ESTRICTA ⬇️⬇️⬇️
 export default React.memo(GanttDayScroller, (prevProps, nextProps) => {
-  // 1️⃣ Comparar length de capacity
   if (prevProps.capacity.length !== nextProps.capacity.length) {
-    console.log('🔄 [React.memo] Capacity LENGTH cambió:', {
-      prev: prevProps.capacity.length,
-      next: nextProps.capacity.length
-    });
-    return false; // NO son iguales → RE-RENDER
+    return false;
   }
   
-  // 2️⃣ Comparar VALORES de capacity (sampling en 3 puntos)
   if (prevProps.capacity.length > 0 && nextProps.capacity.length > 0) {
     const indicesToCheck = [
       0,
@@ -280,17 +185,12 @@ export default React.memo(GanttDayScroller, (prevProps, nextProps) => {
         if (prevCap.capacity !== nextCap.capacity || 
             prevCap.date !== nextCap.date || 
             prevCap.line !== nextCap.line) {
-          console.log('🔄 [React.memo] Capacity VALUE cambió en índice', i, ':', {
-            prev: { date: prevCap.date, line: prevCap.line, capacity: prevCap.capacity },
-            next: { date: nextCap.date, line: nextCap.line, capacity: nextCap.capacity }
-          });
-          return false; // Capacity cambió → RE-RENDER
+          return false;
         }
       }
     }
   }
 
-  // 3️⃣ Comparar otras props
   const lineChanged = prevProps.line !== nextProps.line;
   const zoomChanged = prevProps.zoomLevel !== nextProps.zoomLevel;
   const daysChanged = prevProps.days.length !== nextProps.days.length;
@@ -298,17 +198,9 @@ export default React.memo(GanttDayScroller, (prevProps, nextProps) => {
   const selectedChanged = prevProps.selectedWOs.length !== nextProps.selectedWOs.length;
   
   if (lineChanged || zoomChanged || daysChanged || workOrdersChanged || selectedChanged) {
-    console.log('🔄 [React.memo] Otras props cambiaron:', {
-      lineChanged,
-      zoomChanged,
-      daysChanged,
-      workOrdersChanged,
-      selectedChanged
-    });
-    return false; // Props cambiaron → RE-RENDER
+    return false;
   }
   
-  // 4️⃣ Comparación profunda de workOrders
   const workOrdersEqual = prevProps.workOrders.length === nextProps.workOrders.length &&
     prevProps.workOrders.every((wo, index) => {
       const nextWO = nextProps.workOrders[index];
@@ -319,10 +211,8 @@ export default React.memo(GanttDayScroller, (prevProps, nextProps) => {
     });
   
   if (!workOrdersEqual) {
-    console.log('🔄 [React.memo] WorkOrders CONTENT cambió');
     return false;
   }
   
-  // ✅ TODO IGUAL → NO RE-RENDER
   return true;
 });

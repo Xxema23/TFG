@@ -1,15 +1,13 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { GanttData } from './Types';
 import { getNonWorkingDays } from '../../../services/VacacionesServices';
 import { generateInitialWorkingDays } from './UseDateHandlers';
 
-// ✅ MAP GLOBAL - PERSISTE ENTRE RENDERS Y ENTRE INSTANCIAS
 const initializationState = new Map<string, boolean>();
 const workingDaysCache = new Map<string, string[]>();
-const dataCache = new Map<string, GanttData>();  // ⬅️ NUEVO: Cache para data
+const dataCache = new Map<string, GanttData>();
 
 export const useGanttData = (lineId: string = 'default') => {
-  // ✅ RESTAURAR desde cache si existe
   const [data, setData] = useState<GanttData | null>(() => {
     return dataCache.get(lineId) || null;
   });
@@ -43,23 +41,18 @@ export const useGanttData = (lineId: string = 'default') => {
     return days;
   }, []);
 
-  // ✅ INICIALIZACIÓN ÚNICA POR LÍNEA
   useEffect(() => {
     if (initializationState.get(lineId)) {
-      console.log(`⏭️ [useGanttData-${lineId}] Ya inicializado, skip`);
       return;
     }
     
     initializationState.set(lineId, true);
-    console.log(`🚀 [useGanttData-${lineId}] Inicializando datos...`);
     
     const fetchInitialData = async () => {
       setIsLoading(true);
       try {
         const nonWorkingFromApi = await getNonWorkingDays();
         const initialWorkingDays = generateInitialWorkingDays(nonWorkingFromApi);
-        
-        console.log(`✅ [useGanttData-${lineId}] Working days generados:`, initialWorkingDays.length);
         
         workingDaysCache.set(lineId, initialWorkingDays);
         setWorkingDays(initialWorkingDays);
@@ -70,12 +63,10 @@ export const useGanttData = (lineId: string = 'default') => {
           nonWorkingDays: nonWorkingFromApi || [],
         };
 
-        dataCache.set(lineId, initialData);  // ⬅️ GUARDAR en cache
+        dataCache.set(lineId, initialData);
         setData(initialData);
-        console.log(`✅ [useGanttData-${lineId}] Data inicial configurada`);
       } catch (error) {
-        console.error(`❌ [useGanttData-${lineId}] Error cargando días no laborables:`, error);
-        console.log(`⚠️ [useGanttData-${lineId}] Usando fallback working days`);
+        console.error(`❌ [useGanttData] Error cargando días no laborables:`, error);
         
         const fallbackDays = generateFallbackWorkingDays;
         workingDaysCache.set(lineId, fallbackDays);
@@ -87,7 +78,7 @@ export const useGanttData = (lineId: string = 'default') => {
           nonWorkingDays: [],
         };
         
-        dataCache.set(lineId, fallbackData);  // ⬅️ GUARDAR en cache
+        dataCache.set(lineId, fallbackData);
         setData(fallbackData);
       } finally {
         setIsLoading(false);
@@ -97,14 +88,12 @@ export const useGanttData = (lineId: string = 'default') => {
     fetchInitialData();
   }, [lineId, generateFallbackWorkingDays]);
 
-  // ✅ Sincronizar workingDays con cache
   useEffect(() => {
     if (workingDays.length > 0) {
       workingDaysCache.set(lineId, workingDays);
     }
   }, [workingDays, lineId]);
 
-  // ✅ NUEVO: Sincronizar data con cache
   useEffect(() => {
     if (data) {
       dataCache.set(lineId, data);

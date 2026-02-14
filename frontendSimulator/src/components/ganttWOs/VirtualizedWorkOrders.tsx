@@ -36,7 +36,6 @@ const BetweenWODropZone: React.FC<{
   
   const dropRef = React.useRef<HTMLDivElement>(null);
   
-  // ✅ TIPADO CORRECTO (como lo tenías originalmente)
   const [{ isOver, canDrop, item }, drop] = useDrop<{ workOrders: string[] }, { handled: boolean; zone: string; insertBeforeWO: string }, { isOver: boolean; canDrop: boolean; item: { workOrders: string[] } | null }>({
     accept: "WORK_ORDER",
     drop: (dragItem: { workOrders: string[] }, monitor) => {
@@ -241,20 +240,6 @@ const VirtualizedWorkOrders: React.FC<VirtualizedWorkOrdersProps> = ({
     return zones;
   }, [blocks, days, dayWidth]);
 
-  // ✅ LOG DE DEBUGGING AÑADIDO (opcional - puedes quitarlo después)
-  React.useEffect(() => {
-    console.log('🎨 [VirtualizedWorkOrders] BLOCKS RECIBIDOS:', {
-      total: blocks.length,
-      primeros3: blocks.slice(0, 3).map(b => ({
-        NumWO: b.workOrder.NumWO,
-        startDay: b.startDay,
-        startDayString: days[b.startDay],
-        left: b.left,
-        width: b.width
-      }))
-    });
-  }, [blocks, days]);
-
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       <div style={{
@@ -353,4 +338,4 @@ const VirtualizedWorkOrders: React.FC<VirtualizedWorkOrdersProps> = ({
   );
 };
 
-export default VirtualizedWorkOrders; 
+export default VirtualizedWorkOrders;

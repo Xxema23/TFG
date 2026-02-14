@@ -290,8 +290,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
   });
 
   const handleReorderInTable = useCallback((draggedNumWOs: string[], targetNumWO: string) => {
-    console.log('🔄 [REORDEN TABLE] Inicio:', { draggedNumWOs, targetNumWO });
-
     const targetFab = fabricacionesFromContext.find(f => f.NumWO === targetNumWO);
     if (!targetFab) {
       console.error('❌ Target no encontrado');
@@ -300,9 +298,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 
     const targetDay = targetFab.Fch_Objetivo;
     const targetLine = targetFab.Linea;
-
-    console.log('📍 Target:', { NumWO: targetNumWO, Linea: targetLine, Dia: targetDay });
-
     const draggedFabsOriginal = draggedNumWOs
       .map(numWO => fabricacionesFromContext.find(f => f.NumWO === numWO))
       .filter(Boolean);
@@ -374,9 +369,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 
     let finalFabs = allFabs;
 
-    if (capacity.length > 0 && workingDays.length > 0) {
-      console.log('🎯 [REORDEN TABLE] Aplicando CAPACITY...');
-      
+    if (capacity.length > 0 && workingDays.length > 0) {      
       const normalizeDate = (date: string) => date.replace(' ', 'T').split('T')[0];
       const dropDate = normalizeDate(targetDay);
       const draggedSet = new Set(draggedNumWOs);
@@ -389,9 +382,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       });
       
       const minAffectedDay = Array.from(affectedDays).sort()[0];
-      
-      console.log('📅 Días afectados:', Array.from(affectedDays));
-      console.log('📅 Día mínimo afectado:', minAffectedDay);
       
       const wosBeforeAffected = allFabs.filter(wo => {
         if (wo.Linea !== targetLine) return true;
@@ -412,9 +402,6 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
           return a.Secuencia - b.Secuencia;
         });
       
-      console.log(`🔒 WOs antes de días afectados: ${wosBeforeAffected.length}`);
-      console.log(`🔄 WOs a redistribuir: ${wosToRedistribute.length}`);
-      
       const capacityByDay = new Map<string, number>();
       const dayUsage = new Map<string, number>();
       
@@ -434,9 +421,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
           dayUsage.set(woDate, currentUsage + woHours);
         }
       });
-      
-      console.log('🔧 Pre-carga completada');
-      
+            
       const redistributed: typeof wosToRedistribute = [];
       let pushedCount = 0;
       
@@ -484,9 +469,7 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
           console.warn(`⚠️ WO ${wo.NumWO} no cabía`);
         }
       });
-      
-      console.log(`✅ Redistribución: ${redistributed.length} WOs, ${pushedCount} empujadas`);
-      
+            
       const redistributedByDay = new Map<string, typeof redistributed>();
       redistributed.forEach(wo => {
         const day = normalizeDate(wo.Fch_Objetivo);
@@ -515,9 +498,8 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
         ...redistributedWithCorrectSeq
       ];
       
-      console.log(`✅ WOs finales: ${finalFabs.length}`);
     } else {
-      console.log('⚠️ Capacity NO disponible');
+      console.log('Capacity NO disponible');
     }
 
     finalFabs.sort((a, b) => {
@@ -535,21 +517,9 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
       return fabModificada || fabContext;
     });
 
-    console.log('🔍 [REORDEN TABLE] WO ...678 en finalFabs ANTES de enviar al Context:', 
-  finalFabs.find(f => f.NumWO.endsWith('678'))
-);
-
-console.log('📊 [REORDEN TABLE] Total WOs en finalFabs:', finalFabs.length);
-console.log('📊 [REORDEN TABLE] Primeras 5 WOs:', finalFabs.slice(0, 5).map(f => ({
-  NumWO: f.NumWO,
-  Fch_Objetivo: f.Fch_Objetivo,
-  Secuencia: f.Secuencia
-})));
-
     onGanttOrdersChanged(contextoActualizado);
     refetchComponentes();
 
-    console.log('✅ [REORDEN TABLE] Completado');
   }, [fabricacionesFromContext, onGanttOrdersChanged, capacity, workingDays, refetchComponentes]);
 
   const handleRowHover = (woId: string | null) => {

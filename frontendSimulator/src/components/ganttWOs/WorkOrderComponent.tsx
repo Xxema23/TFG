@@ -41,14 +41,6 @@ const WorkOrderComponent: React.FC<WorkOrderComponentProps> = ({
   const [{ isDragging }, drag] = useDrag<DragItem, unknown, { isDragging: boolean }>({
     type: "WORK_ORDER",
     item: (): DragItem => {
-      console.log("🚀 WorkOrderComponent: Iniciando drag", {
-        workOrder: workOrder.NumWO,
-        selectedWOs: selectedWOs,
-        isSelected,
-        dataDay,
-        dataLine
-      });
-      
       const draggedWOs = isSelected ? selectedWOs : [workOrder.NumWO];
       
       if (!isSelected) {
@@ -68,14 +60,6 @@ const WorkOrderComponent: React.FC<WorkOrderComponentProps> = ({
     collect: (monitor: DragSourceMonitor): { isDragging: boolean } => ({
       isDragging: monitor.isDragging(),
     }),
-    end: (item: DragItem | undefined, monitor: DragSourceMonitor): void => {
-      const dropResult = monitor.getDropResult();
-      console.log("🏁 Drag terminado:", {
-        workOrder: workOrder.NumWO,
-        dropResult,
-        didDrop: monitor.didDrop()
-      });
-    },
   });
 
   drag(ref);
@@ -107,21 +91,18 @@ const WorkOrderComponent: React.FC<WorkOrderComponentProps> = ({
     return "grab";
   };
 
-  // ✅✅✅ FIX APLICADO: Propiedades críticas PRIMERO, ...style AL FINAL
   return (
     <div
       ref={ref}
       onClick={handleClick}
       onMouseDown={handleMouseDown}
       style={{
-        // ✅ PROPIEDADES CRÍTICAS DE POSITIONING (NO SOBRESCRIBIBLES)
         position: "absolute",
         left: `${left}px`,
         width: `${width}px`,
         top: `${top}px`,
-        height: '40px', // ✅ ALTURA EXPLÍCITA AÑADIDA
+        height: '40px',
         
-        // ✅ ESTILOS VISUALES
         backgroundColor: getBackgroundColor(),
         color: getTextColor(),
         border: isSelected ? "2px solid #1e40af" : "1px solid #059669",
@@ -137,7 +118,6 @@ const WorkOrderComponent: React.FC<WorkOrderComponentProps> = ({
           : "0 2px 4px rgba(0, 0, 0, 0.1)",
         transition: isDragging ? "none" : "all 0.2s ease",
         
-        // ✅ ...style AL FINAL para permitir sobrescritura si es necesario
         ...style,
       }}
       data-wo-id={workOrder.NumWO}

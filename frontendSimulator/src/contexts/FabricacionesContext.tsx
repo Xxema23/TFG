@@ -11,7 +11,6 @@ interface PendingChange {
   timestamp: Date;
 }
 
-// ✅ NUEVO: Separar datos de acciones
 interface FabricacionesDataType {
   fabricaciones: IFabricacionConHoras[];
   isLoading: boolean;
@@ -32,7 +31,6 @@ interface FabricacionesActionsType {
   discardPendingChanges: () => void;
 }
 
-// ✅ NUEVO: Dos Contexts separados
 const FabricacionesDataContext = createContext<FabricacionesDataType | null>(null);
 const FabricacionesActionsContext = createContext<FabricacionesActionsType | null>(null);
 
@@ -125,11 +123,6 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
   }, []);
 
   const onGanttOrdersChanged = useCallback((reorderedOrders: IFabricacionConHoras[], fromCapacity = false) => {
-    console.log('📦 [CONTEXT] onGanttOrdersChanged recibió:', reorderedOrders.length, 'WOs');
-    console.log('📦 [CONTEXT] WO ...678 recibida:', 
-      reorderedOrders.find(wo => wo.NumWO.endsWith('678'))
-    );
-
     setFabricaciones(prevFabs => {
       const updatedWOsMap = new Map<string, IFabricacionConHoras>();
       reorderedOrders.forEach(wo => updatedWOsMap.set(wo.NumWO, wo));
@@ -168,7 +161,6 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
       const originalWO = originalFabricaciones.find(o => o.NumWO === currentWO.NumWO);
       
       if (!originalWO) {
-        if (DEBUG_MODE) console.warn('⚠️ WO no encontrada en original:', currentWO.NumWO);
         return;
       }
 
@@ -237,7 +229,6 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
     }
   }, []);
 
-  // ✅ NUEVO: Memoizar DATA (solo cambia cuando cambian los datos)
   const dataValue = useMemo<FabricacionesDataType>(() => ({
     fabricaciones,
     isLoading,
@@ -247,7 +238,6 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
     pendingChanges
   }), [fabricaciones, isLoading, error, hasPendingChanges, lastUpdated, pendingChanges]);
 
-  // ✅ NUEVO: Memoizar ACTIONS (nunca cambia porque todas son useCallback)
   const actionsValue = useMemo<FabricacionesActionsType>(() => ({
     refetch,
     updateFabricaciones,
@@ -278,7 +268,6 @@ export const FabricacionesProvider: React.FC<FabricacionesProviderProps> = ({ ch
   );
 };
 
-// ✅ NUEVO: Hook para obtener solo DATA
 export const useFabricacionesData = () => {
   const context = useContext(FabricacionesDataContext);
   if (!context) {
@@ -287,7 +276,6 @@ export const useFabricacionesData = () => {
   return context;
 };
 
-// ✅ NUEVO: Hook para obtener solo ACTIONS
 export const useFabricacionesActions = () => {
   const context = useContext(FabricacionesActionsContext);
   if (!context) {
@@ -296,7 +284,6 @@ export const useFabricacionesActions = () => {
   return context;
 };
 
-// ✅ MANTENER: Hook legacy para compatibilidad (combina ambos)
 export const useFabricacionesContext = () => {
   const data = useFabricacionesData();
   const actions = useFabricacionesActions();
