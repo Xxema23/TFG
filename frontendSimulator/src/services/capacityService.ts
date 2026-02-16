@@ -7,17 +7,9 @@ interface ApiResponse {
   data?: any;
 }
 
-// ============================================
-// CAPACIDADES BASE
-// ============================================
-
-/**
- * Obtener capacidades BASE de todas las líneas
- */
 export const getBaseCapacities = async (scenarioId: number): Promise<BaseCapacity[]> => {
   try {
     const response = await api.get(`/scenarios/${scenarioId}/capacidades-base`);
-    console.log('✅ [getBaseCapacities] Cargadas:', response.data);
     return response.data;
   } catch (error) {
     console.error('❌ Error al obtener capacidades base:', error);
@@ -25,17 +17,12 @@ export const getBaseCapacities = async (scenarioId: number): Promise<BaseCapacit
   }
 };
 
-/**
- * Guardar múltiples capacidades BASE
- * @param capacities - Objeto { "S21": 10, "L14": 8 }
- */
 export const saveBaseCapacities = async (
   scenarioId: number,
   capacities: Record<string, number>
 ): Promise<ApiResponse> => {
   try {
     const response = await api.post(`/scenarios/${scenarioId}/capacidades-base`, capacities);
-    console.log('✅ [saveBaseCapacities] Guardadas:', response.data);
     return {
       success: true,
       message: response.data.message,
@@ -50,13 +37,6 @@ export const saveBaseCapacities = async (
   }
 };
 
-// ============================================
-// CAPACIDADES SEMANALES
-// ============================================
-
-/**
- * Obtener capacidades SEMANALES de un año
- */
 export const getCapacities = async (
   scenarioId: number,
   year: number,
@@ -69,7 +49,6 @@ export const getCapacities = async (
     }
 
     const response = await api.get(`/scenarios/${scenarioId}/capacidades-semanales`, { params });
-    console.log(`✅ [getCapacities] Año ${year}:`, response.data.length, 'capacidades');
     return response.data;
   } catch (error) {
     console.error('❌ Error al obtener capacidades semanales:', error);
@@ -77,9 +56,6 @@ export const getCapacities = async (
   }
 };
 
-/**
- * Guardar múltiples capacidades SEMANALES
- */
 export const saveCapacities = async (
   scenarioId: number,
   capacities: CapacityData[]
@@ -94,7 +70,6 @@ export const saveCapacities = async (
     }
 
     const response = await api.post(`/scenarios/${scenarioId}/capacidades-semanales`, capacities);
-    console.log('✅ [saveCapacities] Guardadas:', response.data);
     
     return {
       success: true,
@@ -110,9 +85,6 @@ export const saveCapacities = async (
   }
 };
 
-/**
- * Eliminar múltiples capacidades SEMANALES
- */
 export const deleteCapacities = async (
   scenarioId: number,
   deletions: { line: string; week: number; year: number }[]
@@ -130,8 +102,6 @@ export const deleteCapacities = async (
       data: deletions
     });
     
-    console.log('✅ [deleteCapacities] Eliminadas:', response.data);
-    
     return {
       success: true,
       message: response.data.message,
@@ -146,13 +116,6 @@ export const deleteCapacities = async (
   }
 };
 
-// ============================================
-// LÓGICA HÍBRIDA
-// ============================================
-
-/**
- * Helper: Calcular número de semana ISO
- */
 export const getWeekNumber = (date: Date): number => {
   const target = new Date(date.valueOf());
   const dayNr = (date.getUTCDay() + 6) % 7;
@@ -161,72 +124,48 @@ export const getWeekNumber = (date: Date): number => {
   return 1 + Math.ceil((target.getTime() - firstThursday.getTime()) / 604800000);
 };
 
-/**
- * Construir capacidades diarias con lógica HÍBRIDA
- * 
- * REGLA: Si existe capacidad semanal específica → usar esa
- *        Si NO existe → usar capacidad base de la línea
- */
 export const buildDailyCapacities = (
   baseCapacities: BaseCapacity[],
   weeklyCapacities: CapacityData[],
   workingDays: string[]
 ): DailyCapacity[] => {
-  
-  console.log('🏗️ [buildDailyCapacities] Iniciando construcción híbrida...');
-  console.log(`   📊 Capacidades BASE: ${baseCapacities.length}`);
-  console.log(`   📊 Capacidades SEMANALES: ${weeklyCapacities.length}`);
-  console.log(`   📊 Días laborables: ${workingDays.length}`);
-  
   const result: DailyCapacity[] = [];
   
-  // Crear mapa de capacidades base
   const baseMap = new Map<string, number>();
   baseCapacities.forEach(cap => {
     baseMap.set(cap.line, cap.daily_capacity);
   });
   
-  // Crear mapa de capacidades semanales
   const weeklyMap = new Map<string, number>();
   weeklyCapacities.forEach(cap => {
     const key = `${cap.line}-${cap.week}-${cap.year}`;
     weeklyMap.set(key, cap.value);
   });
   
-  // Para cada día laborable
   workingDays.forEach(day => {
     const date = new Date(day);
     const year = date.getFullYear();
     const week = getWeekNumber(date);
     
-    // Para cada línea
     baseCapacities.forEach(baseCap => {
       const line = baseCap.line;
       const weekKey = `${line}-${week}-${year}`;
       
-      // ⬇️⬇️⬇️ LÓGICA HÍBRIDA ⬇️⬇️⬇️
       const capacity = weeklyMap.has(weekKey)
-        ? weeklyMap.get(weekKey)!      // Usar específica si existe
-        : baseMap.get(line)!;          // Usar base si no existe
-      // ⬆️⬆️⬆️ FIN LÓGICA HÍBRIDA ⬆️⬆️⬆️
+        ? weeklyMap.get(weekKey)!
+        : baseMap.get(line)!;
       
       result.push({ line, date: day, capacity });
     });
   });
   
-  console.log(`✅ [buildDailyCapacities] Generadas ${result.length} capacidades diarias`);
-  
   return result;
 };
 
-// ============================================
-// FUNCIONES DE UTILIDAD
-// ============================================
-
 export const clearAllCapacities = (): void => {
-  console.log('🗑️ clearAllCapacities no hace nada (datos en backend)');
+  // No-op: datos en backend
 };
 
 export const debugStorage = (): void => {
-  console.log('🔍 debugStorage no hace nada (datos en backend)');
+  // No-op: datos en backend
 };

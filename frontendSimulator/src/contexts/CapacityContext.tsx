@@ -24,6 +24,9 @@ export const CapacityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   
   const capacitiesRef = useRef<DailyCapacity[]>([]);
   const isLoadingRef = useRef(false);
+  
+  // ✅ NUEVO: Cache por año
+  const yearCapacitiesCache = useRef<Map<number, CapacityData[]>>(new Map());
 
   useEffect(() => {
     const calculateWorkingDays = () => {
@@ -65,9 +68,16 @@ export const CapacityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const years = [currentYear - 1, currentYear, currentYear + 1];
       
       const allWeeklyCapacities: CapacityData[] = [];
+      
+      // ✅ OPTIMIZADO: Usar cache por año
       for (const year of years) {
-        const yearCaps = await getCapacities(1, year);
-        allWeeklyCapacities.push(...yearCaps);
+        if (yearCapacitiesCache.current.has(year)) {
+          allWeeklyCapacities.push(...yearCapacitiesCache.current.get(year)!);
+        } else {
+          const yearCaps = await getCapacities(1, year);
+          yearCapacitiesCache.current.set(year, yearCaps);
+          allWeeklyCapacities.push(...yearCaps);
+        }
       }
 
       const daily = buildDailyCapacities(
@@ -96,6 +106,8 @@ export const CapacityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [workingDays.length]);
 
   const refresh = async () => {
+    // ✅ Limpiar cache al refrescar
+    yearCapacitiesCache.current.clear();
     await loadCapacities();
   };
 

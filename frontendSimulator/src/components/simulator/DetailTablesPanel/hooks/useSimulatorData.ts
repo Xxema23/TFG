@@ -7,8 +7,8 @@ import {
   updateWorkOrderSequence,
   invalidateWorkOrderCache,
   getCacheStats,
-  getPalets, // ✅ NUEVA importación
-  createPaletsMap, // ✅ NUEVA importación
+  getPalets,
+  createPaletsMap,
 } from '../../../../services/SimulatorServices';
 import { useFabricacionesConHoras } from '../../../../hooks/UseFrabricacionesConHoras';
 import { UseSmartCache } from './UseSmartCache';
@@ -34,48 +34,36 @@ interface UseSimulatorDataResult {
   componentAvailability: Record<string, Record<string, any>>;
 }
 
-// ✅ ACTUALIZADA: Función para mapear fabricación a work order CON palets
-// ✅ FUNCIÓN CORREGIDA Y ROBUSTA
+// ✅ CACHE GLOBAL para paletsMap (evita recalcular)
+let globalPaletsMap: Map<string, IPalet> | null = null;
+let globalPaletsLength = 0;
+
 const mapFabricacionToWorkOrder = (
   fabricacion: IFabricacionConHoras, 
   paletsMap: Map<string, IPalet>
 ): IWorkOrderFrontend => {
-  // ✅ Validación de campos obligatorios
   if (!fabricacion.NumWO || !fabricacion.Linea || !fabricacion.Fch_Objetivo) {
     throw new Error(`Fabricación con datos incompletos: ${JSON.stringify(fabricacion)}`);
   }
 
   const uniqueId = `${fabricacion.NumWO}-${fabricacion.Fch_Objetivo}-${fabricacion.Linea}-${fabricacion.Secuencia || 0}`;
-  
-  // Buscar palet por NumWO
   const palet = paletsMap.get(fabricacion.NumWO);
   
-  // ✅ FUNCIÓN AUXILIAR: Parsear horas de forma ultra-segura
   const parseHorasTotales = (valor: any): number => {
-    // Caso 1: undefined o null → 0
-    if (valor === undefined || valor === null) {
-      return 0;
-    }
+    if (valor === undefined || valor === null) return 0;
 
-    // Caso 2: String vacío → 0
     if (typeof valor === 'string') {
       const trimmed = valor.trim();
-      if (trimmed === '' || trimmed === 'null' || trimmed === 'undefined') {
-        return 0;
-      }
-      
-      // Limpiar y parsear
+      if (trimmed === '' || trimmed === 'null' || trimmed === 'undefined') return 0;
       const cleanString = trimmed.replace(/[^0-9.,]/g, '').replace(',', '.');
       const parsed = parseFloat(cleanString);
       return isNaN(parsed) ? 0 : parsed;
     }
     
-    // Caso 3: Número
     if (typeof valor === 'number') {
       return isNaN(valor) ? 0 : valor;
     }
     
-    // Caso 4: Cualquier otro tipo → intentar convertir
     try {
       const parsed = parseFloat(String(valor));
       return isNaN(parsed) ? 0 : parsed;
@@ -108,10 +96,9 @@ const mapFabricacionToWorkOrder = (
 const MOCK_COMPONENT_DATA = {
   generarComponentesMock: (workOrders: IWorkOrderFrontend[]): Record<string, string[]> => {
     const result: Record<string, string[]> = {};
-    
     const equipos = [...new Set(workOrders.map(wo => wo.equipo))].filter(Boolean);
     
-    equipos.forEach((equipo, index) => {
+    equipos.forEach((equipo) => {
       const numComponentes = Math.floor(Math.random() * 4) + 2;
       const componentesEquipo: string[] = [];
       
@@ -160,7 +147,6 @@ export const UseSimulatorData = (): UseSimulatorDataResult => {
   const [defaultLineFilter, setDefaultLineFilter] = useState<string | null>("L8");
   const [componentesMap, setComponentesMap] = useState<Record<string, string[]>>({});
 
-  // ✅ NUEVO: Estados para palets
   const [palets, setPalets] = useState<IPalet[]>([]);
   const [paletsLoading, setPaletsLoading] = useState(false);
   const [paletsError, setPaletsError] = useState<string | null>(null);
@@ -168,7 +154,6 @@ export const UseSimulatorData = (): UseSimulatorDataResult => {
   const { getCached, invalidate, getStats } = UseSmartCache();
   const monitor = UsePerformanceMonitor();
 
-  // ✅ NUEVA: Función para cargar palets
   const loadPalets = useCallback(async () => {
     try {
       setPaletsLoading(true);
@@ -177,8 +162,6 @@ export const UseSimulatorData = (): UseSimulatorDataResult => {
       const paletsData = await getCached('palets', getPalets, 5 * 60 * 1000);
       setPalets(paletsData);
       setCacheStats(getStats());
-      
-      console.log('✅ Palets cargados:', paletsData.length);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error cargando palets';
       setPaletsError(errorMessage);
@@ -188,94 +171,63 @@ export const UseSimulatorData = (): UseSimulatorDataResult => {
     }
   }, [getCached, getStats]);
 
-  // ✅ NUEVO: Crear mapa de palets para búsqueda eficiente
+  // ✅ OPTIMIZADO: Usar cache global para paletsMap
   const paletsMap = useMemo(() => {
-    return createPaletsMap(palets);
-  }, [palets]);
-
-  // ✅ ACTUALIZADO: Procesar datos de fabricaciones CON información de palets
-const allWorkOrders = useMemo(() => {
-  if (!fabricacionesData || fabricacionesData.length === 0) {
-    console.log('📦 No hay datos de fabricaciones disponibles');
-    return [];
-  }
-
-  console.log('🔄 Procesando fabricaciones a work orders con palets:', fabricacionesData.length);
-  
-  // ✅ FILTRAR fabricaciones válidas ANTES de procesarlas
-  const validFabricaciones = fabricacionesData.filter((fabricacion, index) => {
-    // Validar campos obligatorios
-    if (!fabricacion.NumWO) {
-      console.warn(`⚠️ [${index}] Fabricación sin NumWO, omitiendo`);
-      return false;
+    if (palets.length === 0) {
+      globalPaletsMap = null;
+      globalPaletsLength = 0;
+      return new Map<string, IPalet>();
     }
-    
-    if (!fabricacion.Linea) {
-      console.warn(`⚠️ [${index}] Fabricación ${fabricacion.NumWO} sin Linea, omitiendo`);
-      return false;
-    }
-    
-    if (!fabricacion.Fch_Objetivo) {
-      console.warn(`⚠️ [${index}] Fabricación ${fabricacion.NumWO} sin Fch_Objetivo, omitiendo`);
-      return false;
-    }
-    
-    return true;
-  });
 
-  console.log(`✅ Fabricaciones válidas: ${validFabricaciones.length}/${fabricacionesData.length}`);
-  
-  // Detectar problemas con horas_totales_de_la_wo
-  const problemasHoras = validFabricaciones.filter(fab => 
-    fab.horas_totales_de_la_wo === undefined || 
-    fab.horas_totales_de_la_wo === null
-  );
-  
-  if (problemasHoras.length > 0) {
-    console.warn(`⚠️ ${problemasHoras.length} fabricaciones con horas_totales_de_la_wo undefined/null`);
-    console.table(problemasHoras.slice(0, 5).map(fab => ({
-      NumWO: fab.NumWO,
-      Linea: fab.Linea,
-      horas: fab.horas_totales_de_la_wo,
-      tipo: typeof fab.horas_totales_de_la_wo
-    })));
-  }
-  
-  const processedKeys = new Set<string>();
-  const workOrders: IWorkOrderFrontend[] = [];
-  
-  validFabricaciones.forEach((fabricacion) => {
-    const uniqueKey = `${fabricacion.NumWO}-${fabricacion.Fch_Objetivo}-${fabricacion.Linea}-${fabricacion.Secuencia || 0}`;
+    // Solo recalcular si cambió el length
+    if (globalPaletsMap && globalPaletsLength === palets.length) {
+      return globalPaletsMap;
+    }
+
+    globalPaletsMap = createPaletsMap(palets);
+    globalPaletsLength = palets.length;
+    return globalPaletsMap;
+  }, [palets.length]); // ✅ Solo length
+
+  // ✅ OPTIMIZADO: Dependencies solo con .length
+  const allWorkOrders = useMemo(() => {
+    if (!fabricacionesData || fabricacionesData.length === 0) {
+      return [];
+    }
+
+    const validFabricaciones = fabricacionesData.filter((fabricacion) => {
+      return fabricacion.NumWO && fabricacion.Linea && fabricacion.Fch_Objetivo;
+    });
     
-    if (!processedKeys.has(uniqueKey)) {
-      processedKeys.add(uniqueKey);
+    const processedKeys = new Set<string>();
+    const workOrders: IWorkOrderFrontend[] = [];
+    
+    validFabricaciones.forEach((fabricacion) => {
+      const uniqueKey = `${fabricacion.NumWO}-${fabricacion.Fch_Objetivo}-${fabricacion.Linea}-${fabricacion.Secuencia || 0}`;
       
-      try {
-        const mappedWO = mapFabricacionToWorkOrder(fabricacion, paletsMap);
-        workOrders.push(mappedWO);
-      } catch (error) {
-        console.error('❌ Error mapeando fabricación:', {
-          NumWO: fabricacion.NumWO,
-          error: error instanceof Error ? error.message : error
-        });
-        // No bloquear el proceso, continuar con las demás
+      if (!processedKeys.has(uniqueKey)) {
+        processedKeys.add(uniqueKey);
+        
+        try {
+          const mappedWO = mapFabricacionToWorkOrder(fabricacion, paletsMap);
+          workOrders.push(mappedWO);
+        } catch (error) {
+          console.error('❌ Error mapeando fabricación:', {
+            NumWO: fabricacion.NumWO,
+            error: error instanceof Error ? error.message : error
+          });
+        }
       }
-    }
-  });
-  
-  const workOrdersWithPalets = workOrders.filter(wo => wo.paletInfo).length;
-  console.log(`✅ Work orders procesadas: ${workOrders.length} WOs únicos (${workOrdersWithPalets} con palets)`);
-  
-  return workOrders;
-}, [fabricacionesData, paletsMap]);
+    });
+    
+    return workOrders;
+  }, [
+    fabricacionesData.length,
+    fabricacionesData[0]?.NumWO,
+    fabricacionesData[fabricacionesData.length - 1]?.NumWO,
+    paletsMap
+  ]); // ✅ Dependencies optimizadas
 
-  // Para compatibilidad, devolver todos los work orders
-  const filteredWorkOrders = useMemo(() => {
-    console.log('📦 UseSimulatorData: Devolviendo TODOS los work orders:', allWorkOrders.length);
-    return allWorkOrders;
-  }, [allWorkOrders]);
-
-  // Cargar colores de work orders
   const loadWorkOrderColors = useCallback(async () => {
     try {
       setColorsLoading(true);
@@ -284,8 +236,6 @@ const allWorkOrders = useMemo(() => {
       const colorsData = await getCached('workOrderColors', getWorkOrderColors, 5 * 60 * 1000);
       setWorkOrderColors(colorsData);
       setCacheStats(getStats());
-      
-      console.log('✅ Colores cargados:', Object.keys(colorsData).length);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error cargando colores';
       setColorsError(errorMessage);
@@ -295,23 +245,20 @@ const allWorkOrders = useMemo(() => {
     }
   }, [getCached, getStats]);
 
-  // ✅ ACTUALIZADO: Cargar datos cuando hay fabricaciones
   useEffect(() => {
     if (fabricacionesData.length > 0) {
       loadWorkOrderColors();
-      loadPalets(); // ✅ Cargar palets también
+      loadPalets();
     }
   }, [fabricacionesData.length, loadWorkOrderColors, loadPalets]);
 
-  // Generar componentes mock basados en todos los work orders
   useEffect(() => {
     if (allWorkOrders.length > 0) {
       const nuevosMockComponentes = MOCK_COMPONENT_DATA.generarComponentesMock(allWorkOrders);
       setComponentesMap(nuevosMockComponentes);
     }
-  }, [allWorkOrders]);
+  }, [allWorkOrders.length]); // ✅ Solo length
 
-  // Verificar si la línea por defecto existe
   useEffect(() => {
     if (defaultLineFilter && allWorkOrders.length > 0) {
       const hasDefaultLine = allWorkOrders.some(wo => wo.linea === defaultLineFilter);
@@ -319,20 +266,17 @@ const allWorkOrders = useMemo(() => {
       if (!hasDefaultLine) {
         const availableLines = [...new Set(allWorkOrders.map(wo => wo.linea))].filter(Boolean);
         if (availableLines.length > 0) {
-          console.log(`⚠️ Línea ${defaultLineFilter} no encontrada, cambiando a ${availableLines[0]}`);
           setDefaultLineFilter(availableLines[0]);
         }
       }
     }
-  }, [allWorkOrders, defaultLineFilter]);
+  }, [allWorkOrders.length, defaultLineFilter]);
 
-  // ✅ ACTUALIZADO: Estados de carga y error combinados (incluyendo palets)
   const loading = fabricacionesLoading || colorsLoading || paletsLoading;
   const error = fabricacionesError ? 
     (fabricacionesError instanceof Error ? fabricacionesError.message : 'Error cargando fabricaciones') :
     colorsError || paletsError;
 
-  // Función de actualización de fecha
   const updateWODate = useCallback(
     async (woId: string, newDate: string): Promise<boolean> => {
       return monitor.measureAsync('update-wo-date', async () => {
@@ -342,7 +286,7 @@ const allWorkOrders = useMemo(() => {
           if (success) {
             await refetchFabricaciones();
             invalidate('workOrderColors');
-            invalidate('palets'); // ✅ Invalidar cache de palets también
+            invalidate('palets');
             setCacheStats(getStats());
             return true;
           }
@@ -355,7 +299,6 @@ const allWorkOrders = useMemo(() => {
     [monitor, refetchFabricaciones, invalidate, getStats]
   );
 
-  // Función de actualización de secuencia
   const updateWOSequence = useCallback(
     async (updates: { wo: string; secuencia: number }[]): Promise<boolean> => {
       return monitor.measureAsync('update-wo-sequence-batch', async () => {
@@ -365,7 +308,7 @@ const allWorkOrders = useMemo(() => {
           if (success) {
             await refetchFabricaciones();
             invalidate('workOrderColors');
-            invalidate('palets'); // ✅ Invalidar cache de palets también
+            invalidate('palets');
             setCacheStats(getStats());
             return true;
           }
@@ -378,36 +321,31 @@ const allWorkOrders = useMemo(() => {
     [monitor, refetchFabricaciones, invalidate, getStats]
   );
 
-  // ✅ ACTUALIZADO: Refrescar datos (incluyendo palets)
   const refresh = useCallback(async () => {
     await Promise.all([
       refetchFabricaciones(),
       loadWorkOrderColors(),
-      loadPalets() // ✅ Incluir palets en el refresh
+      loadPalets()
     ]);
   }, [refetchFabricaciones, loadWorkOrderColors, loadPalets]);
 
-  // Refrescar caché
   const refreshCache = useCallback(() => {
     setCacheStats(getStats());
   }, [getStats]);
 
-  // ✅ ACTUALIZADO: Limpiar caché (incluyendo palets)
   const clearCache = useCallback(() => {
     invalidateWorkOrderCache();
     invalidate('workOrderColors');
-    invalidate('palets'); // ✅ Incluir palets
+    invalidate('palets');
     setCacheStats(getStats());
   }, [invalidate, getStats]);
 
-  // IDs de WOs disponibles
   const availableWOs = useMemo(() => {
     return monitor.measureSync('calculate-available-wos', () =>
       allWorkOrders.map((wo) => wo.id)
     );
-  }, [allWorkOrders, monitor]);
+  }, [allWorkOrders.length, monitor]); // ✅ Solo length
 
-  // Componentes disponibles
   const availableComponents = useMemo(() => {
     const allComponentIds = new Set<string>();
     
@@ -420,10 +358,9 @@ const allWorkOrders = useMemo(() => {
     return Array.from(allComponentIds).sort();
   }, [componentesMap]);
 
-  // Disponibilidad de componentes
   const componentAvailability = useMemo(() => {
     return MOCK_COMPONENT_DATA.generarDisponibilidadMock(availableComponents);
-  }, [availableComponents]);
+  }, [availableComponents.length]); // ✅ Solo length
 
   return {
     workOrders: allWorkOrders,
@@ -439,7 +376,7 @@ const allWorkOrders = useMemo(() => {
     clearCache,
     defaultLineFilter,
     setDefaultLineFilter,
-    filteredWorkOrders,
+    filteredWorkOrders: allWorkOrders, // ✅ Sin useMemo redundante
     allWorkOrders,
     availableComponents,
     componentAvailability,
