@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { DetailTablesPanelProps } from './types';
 import { openExpandedWindow } from './components/DetailModal';
 import EquipmentTable from './components/EquipmentTable';
@@ -92,40 +92,65 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     fabricacionesFromContext[0]?.Fch_Objetivo,
     fabricacionesFromContext[fabricacionesFromContext.length - 1]?.Fch_Objetivo
   ]);
-  const dataToUse = useMemo(() => {
-    if (useFilteredData && filteredFabrications.length > 0) {
-      return filteredFabrications;
-    }
+  const fabricacionesSignature = useMemo(() => {
+  if (fabricacionesFromContext.length === 0) return '';
+  const first = fabricacionesFromContext[0];
+  const last  = fabricacionesFromContext[fabricacionesFromContext.length - 1];
+  return `${fabricacionesFromContext.length}|${first?.NumWO}|${first?.Secuencia}|${last?.NumWO}|${last?.Secuencia}`;
+}, [
+  fabricacionesFromContext.length,
+  fabricacionesFromContext[0]?.NumWO,
+  fabricacionesFromContext[0]?.Secuencia,
+  fabricacionesFromContext[fabricacionesFromContext.length - 1]?.NumWO,
+  fabricacionesFromContext[fabricacionesFromContext.length - 1]?.Secuencia,
+]);
 
-    if (useFilteredData && filteredFabrications.length === 0 && fabricacionesFromContext.length > 0) {
-      const contextFiltered = fabricacionesFromContext.filter(fab => {
-        if (defaultLineFilter && defaultLineFilter.trim()) {
-          return fab.Linea === defaultLineFilter;
-        }
-        return true;
-      });
-      
-      return contextFiltered;
-    }
+const filteredFabricationsSignature = useMemo(() => {
+  if (filteredFabrications.length === 0) return '';
+  return `${filteredFabrications.length}|${filteredFabrications[0]?.NumWO}|${filteredFabrications[filteredFabrications.length-1]?.NumWO}`;
+}, [
+  filteredFabrications.length,
+  filteredFabrications[0]?.NumWO,
+  filteredFabrications[filteredFabrications.length - 1]?.NumWO,
+]);
 
-    if (!useFilteredData && fabricacionesFromContext.length > 0) {
-      return fabricacionesFromContext;
-    }
+const dataToUse = useMemo(() => {
+  if (useFilteredData && filteredFabrications.length > 0) {
+    return filteredFabrications;
+  }
+  if (useFilteredData && filteredFabrications.length === 0 && fabricacionesFromContext.length > 0) {
+    return fabricacionesFromContext.filter(fab =>
+      defaultLineFilter?.trim() ? fab.Linea === defaultLineFilter : true
+    );
+  }
+  if (!useFilteredData && fabricacionesFromContext.length > 0) {
+    return fabricacionesFromContext;
+  }
+  if (filteredFabrications.length > 0) return filteredFabrications;
+  return fabricacionesConHoras;
+}, [
+  fabricacionesSignature,
+  filteredFabrications.length,
+  filteredFabrications[0]?.NumWO,
+  useFilteredData,
+  defaultLineFilter,
+  fabricacionesConHoras.length,
+]);
 
-    if (filteredFabrications.length > 0) {
-      return filteredFabrications;
-    }
+  const numWOsStableSignature = useMemo(() => {
+  if (dataToUse.length === 0) return '';
+  return dataToUse.map(f => f.NumWO).sort().join(',');
+}, [
+  dataToUse.length,
+  dataToUse[0]?.NumWO,
+  dataToUse[0]?.Secuencia,
+  dataToUse[dataToUse.length - 1]?.NumWO,
+  dataToUse[dataToUse.length - 1]?.Secuencia,
+]);
 
-    return fabricacionesConHoras;
-  }, [fabricacionesFromContext, filteredFabrications, useFilteredData, fabricacionesConHoras, lastUpdated, defaultLineFilter]);
-
-  const numWOsParaComponentes = useMemo(() => {
-    return dataToUse.map(fab => fab.NumWO);
-  }, [
-    dataToUse.length,
-    dataToUse[0]?.NumWO,
-    dataToUse[dataToUse.length - 1]?.NumWO
-  ]);
+const numWOsParaComponentes = useMemo(() => {
+  return dataToUse.map(fab => fab.NumWO);
+}, [numWOsStableSignature]);
 
   const {
     componentes,
@@ -522,9 +547,35 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
 
   }, [fabricacionesFromContext, onGanttOrdersChanged, capacity, workingDays, refetchComponentes]);
 
-  const handleRowHover = (woId: string | null) => {
-    setHoveredRowId(woId);
+  
+  const hoverRafId = useRef<number | null>(null);
+  const lastHoveredRef = useRef<string | null>(null);
+
+  // ✅ Reemplaza el handleRowHover actual por este:
+  const handleRowHover = useCallback((woId: string | null) => {
+    // Si no cambió, no hacer nada
+    if (lastHoveredRef.current === woId) return;
+    lastHoveredRef.current = woId;
+
+    // Cancelar RAF anterior
+    if (hoverRafId.current !== null) {
+      cancelAnimationFrame(hoverRafId.current);
+    }
+
+    // ✅ Aplazar setState al siguiente frame de pintura
+    hoverRafId.current = requestAnimationFrame(() => {
+      setHoveredRowId(woId);
+      hoverRafId.current = null;
+    });
+  }, []);
+
+  useEffect(() => {
+  return () => {
+    if (hoverRafId.current !== null) {
+      cancelAnimationFrame(hoverRafId.current);
+    }
   };
+}, []);
 
   const handleExpandClick = () => {
     openExpandedWindow({
@@ -620,8 +671,12 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
         </h3>
 
         <div
-          ref={leftTableContainerRef}
-          className="flex-1 overflow-y-auto overflow-x-auto"
+            ref={leftTableContainerRef}
+            className="flex-1 overflow-y-auto overflow-x-auto"
+            style={{ 
+              scrollBehavior: 'auto',
+              willChange: 'scroll-position'
+            }}
         >
           <EquipmentTable
             filteredWOIds={filteredWOIds}
@@ -675,6 +730,10 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
     <div
       ref={rightTableContainerRef}
       className="flex-1 overflow-y-auto overflow-x-auto"
+      style={{ 
+        scrollBehavior: 'auto',
+        willChange: 'scroll-position'  // Optimización GPU
+      }}
     >
       <ComponentsTable
         workOrders={visibleWorkOrders}

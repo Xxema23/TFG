@@ -32,15 +32,12 @@ export const useComponentesDisponibilidad = ({
   const [error, setError] = useState<Error | null>(null);
   
   const abortControllerRef = useRef<AbortController | null>(null);
+  const prevSignatureRef    = useRef<string>('');
   
   const numWOsSignature = useMemo(() => {
     if (numWOs.length === 0) return '';
     return [...numWOs].sort().join(',');
-  }, [
-    numWOs.length,
-    numWOs[0],
-    numWOs[numWOs.length - 1]
-  ]);
+  }, [numWOs.length, numWOs.join('|')]);
   
   const loadComponentes = async () => {
     if (!enabled || numWOs.length === 0) {
@@ -84,8 +81,12 @@ export const useComponentesDisponibilidad = ({
   };
   
   useEffect(() => {
+  if (!enabled || numWOsSignature === '') return;
+    if (numWOsSignature === prevSignatureRef.current) return;
+    prevSignatureRef.current = numWOsSignature;
+
     loadComponentes();
-    
+
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
