@@ -17,47 +17,39 @@ const filterFabricaciones = (
   filterValues: FilterValues,
   defaultLineFilter: string | null
 ): IFabricacionConHoras[] => {
-  if (!Array.isArray(fabricaciones) || fabricaciones.length === 0) {
-    return [];
-  }
+  if (!Array.isArray(fabricaciones) || fabricaciones.length === 0) return [];
 
   try {
     let filtered = fabricaciones;
 
-    if (filterValues.linea && Array.isArray(filterValues.linea) && filterValues.linea.length > 0) {
+    if (filterValues.linea?.length > 0)
       filtered = filtered.filter(fab => filterValues.linea.includes(fab.Linea));
-    }
 
-    if (filterValues.fchObjetivo) {
-      filtered = filtered.filter(fab => {
-        const fabDate = fab.Fch_Objetivo?.split('T')[0] || fab.Fch_Objetivo;
-        return fabDate === filterValues.fchObjetivo;
-      });
-    }
+    if (filterValues.fchObjetivo)
+      filtered = filtered.filter(fab =>
+        (fab.Fch_Objetivo?.split('T')[0] || fab.Fch_Objetivo) === filterValues.fchObjetivo
+      );
 
-    if (filterValues.numWO && Array.isArray(filterValues.numWO) && filterValues.numWO.length > 0) {
+    if (filterValues.numWO?.length > 0)
       filtered = filtered.filter(fab => filterValues.numWO.includes(fab.NumWO));
-    }
 
-    if (filterValues.equipo && Array.isArray(filterValues.equipo) && filterValues.equipo.length > 0) {
+    if (filterValues.equipo?.length > 0)
       filtered = filtered.filter(fab => filterValues.equipo.includes(fab.Equipo));
-    }
 
-    if (filterValues.numDoc && Array.isArray(filterValues.numDoc) && filterValues.numDoc.length > 0) {
+    if (filterValues.numDoc?.length > 0)
       filtered = filtered.filter(fab => filterValues.numDoc.includes(fab.Numero_de_pedido || ''));
-    }
 
-    if (filterValues.tipDoc && Array.isArray(filterValues.tipDoc) && filterValues.tipDoc.length > 0) {
+    if (filterValues.tipDoc?.length > 0)
       filtered = filtered.filter(fab => filterValues.tipDoc.includes(fab.Tipo_de_pedido || ''));
-    }
 
-    if (filterValues.estadoWO && Array.isArray(filterValues.estadoWO) && filterValues.estadoWO.length > 0) {
+    if (filterValues.estadoWO?.length > 0) {
       filtered = filtered.filter(fab => {
-        const estadoStr = fab.Estado_WO === 1 ? 'Activo' : 
-                         fab.Estado_WO === 2 ? 'En Proceso' : 
-                         fab.Estado_WO === 3 ? 'Completado' : 
-                         fab.Estado_WO === 0 ? 'Pendiente' : 
-                         `Estado ${fab.Estado_WO || 'N/A'}`;
+        const estadoStr =
+          fab.Estado_WO === 1 ? 'Activo' :
+          fab.Estado_WO === 2 ? 'En Proceso' :
+          fab.Estado_WO === 3 ? 'Completado' :
+          fab.Estado_WO === 0 ? 'Pendiente' :
+          `Estado ${fab.Estado_WO || 'N/A'}`;
         return filterValues.estadoWO.includes(estadoStr);
       });
     }
@@ -69,43 +61,148 @@ const filterFabricaciones = (
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ FIX CRÍTICO: Componentes declarados FUERA de Simulator para evitar re-mount
+// en cada render. Antes estaban definidos dentro del cuerpo de Simulator como
+// funciones locales (SafeGanttWOs, SafeDetailTablesPanel...), lo que hacía que
+// React los tratara como componentes nuevos en cada render y los desmontara
+// y remontara completamente, reseteando todos sus hooks internos.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface GanttPanelProps {
+  fabricacionesFiltradas: IFabricacionConHoras[];
+  hasActiveFilters: boolean;
+  onClearFilters: () => void;
+}
+
+const GanttPanel = React.memo(({
+  fabricacionesFiltradas,
+  hasActiveFilters,
+  onClearFilters
+}: GanttPanelProps) => {
+  if (fabricacionesFiltradas.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full p-8">
+        <div className="bg-white rounded-lg shadow-lg p-6 max-w-lg w-full text-center">
+          <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M12 20a8 8 0 100-16 8 8 0 000 16z" />
+          </svg>
+          <h3 className="mt-4 text-lg font-medium text-gray-900">No se encontraron órdenes de trabajo</h3>
+          <p className="mt-2 text-sm text-gray-500">
+            No hay resultados para los filtros seleccionados. Prueba a modificar los criterios de búsqueda.
+          </p>
+          <div className="mt-4">
+            <button
+              onClick={onClearFilters}
+              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+            >
+              Limpiar filtros
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <GanttWOs
+      filteredWorkOrders={fabricacionesFiltradas}
+      filterActive={hasActiveFilters}
+      refetchFabricaciones={async () => {}}
+    />
+  );
+});
+
+interface DetailPanelProps {
+  workOrderColors: Record<string, string>;
+  availableComponents: string[];
+  componentAvailability: Record<string, any>;
+  handleReorderWO: (ids: string[]) => void;
+  selectedWorkOrderIds: string[];
+  availableWOs: string[];
+  fabricacionesFiltradas: IFabricacionConHoras[];
+  hasActiveFilters: boolean;
+  defaultLineFilter: string | null;
+  lastUpdated: Date | null;
+  fabricaciones: IFabricacionConHoras[];
+}
+
+const DetailPanel = React.memo(({
+  workOrderColors,
+  availableComponents,
+  componentAvailability,
+  handleReorderWO,
+  selectedWorkOrderIds,
+  availableWOs,
+  fabricacionesFiltradas,
+  hasActiveFilters,
+  defaultLineFilter,
+  lastUpdated,
+  fabricaciones,
+}: DetailPanelProps) => {
+  try {
+    return (
+      <DetailTablesPanel
+        workOrders={[]}
+        workOrderColors={workOrderColors}
+        availableComponents={availableComponents}
+        componentAvailability={componentAvailability}
+        onReorderWO={handleReorderWO}
+        selectedWorkOrderIds={selectedWorkOrderIds}
+        availableWOs={availableWOs}
+        filteredFabrications={fabricacionesFiltradas}
+        useFilteredData={hasActiveFilters}
+        defaultLineFilter={defaultLineFilter}
+        lastUpdated={lastUpdated}
+        ganttCapacity={undefined}
+        ganttWorkingDays={undefined}
+      />
+    );
+  } catch (error) {
+    console.warn('Error con DetailTablesPanel:', error);
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <p className="text-gray-600 mb-2">Error cargando tablas de detalle</p>
+          <p className="text-sm text-gray-500">Datos del contexto: {fabricaciones.length} fabricaciones</p>
+        </div>
+      </div>
+    );
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const Simulator: React.FC = () => {
   const { fabricaciones, lastUpdated } = useFabricacionesContext();
-  
+
   const [activeScenario, setActiveScenario] = useState<number | null>(1);
   const [selectedWorkOrderIds, setSelectedWorkOrderIds] = useState<string[]>([]);
-  
+
   const STORAGE_KEY = 'simulator_last_selected_line';
   const DEFAULT_LINE = "S21";
-  
+
   const getStoredLine = useCallback((): string => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored && typeof stored === 'string' && stored.trim()) {
-        if (DEBUG_MODE) console.log('📦 [localStorage] Línea recuperada:', stored);
-        return stored.trim();
-      }
+      if (stored?.trim()) return stored.trim();
     } catch (error) {
       console.warn('⚠️ Error leyendo localStorage:', error);
     }
     return DEFAULT_LINE;
   }, []);
-  
+
   const saveLineToStorage = useCallback((line: string): void => {
     try {
-      if (line && typeof line === 'string' && line.trim()) {
-        localStorage.setItem(STORAGE_KEY, line.trim());
-        if (DEBUG_MODE) console.log('💾 [localStorage] Línea guardada:', line.trim());
-      }
+      if (line?.trim()) localStorage.setItem(STORAGE_KEY, line.trim());
     } catch (error) {
       console.warn('⚠️ Error guardando en localStorage:', error);
     }
   }, []);
-  
-  const initialLine = getStoredLine();
-  
+
   const [filterValues, setFilterValues] = useState<FilterValues>({
-    linea: [initialLine],
+    linea: [getStoredLine()],
     numWO: [],
     numDoc: [],
     equipo: [],
@@ -116,16 +213,12 @@ const Simulator: React.FC = () => {
     fchObjetivo: null
   });
 
-  const [ganttWorkOrders, setGanttWorkOrders] = useState<IFabricacionConHoras[]>([]);
-  const [ganttDataLoaded, setGanttDataLoaded] = useState(false);
-  const [updateCounter, setUpdateCounter] = useState(0);
   const [hasInitialized, setHasInitialized] = useState(false);
 
   const filterValuesRef = useRef(filterValues);
   filterValuesRef.current = filterValues;
 
   const {
-    allWorkOrders = [],
     workOrderColors = {},
     availableComponents = [],
     componentAvailability = {},
@@ -135,72 +228,47 @@ const Simulator: React.FC = () => {
     setDefaultLineFilter
   } = UseSimulatorData();
 
+  // ✅ FIX: eliminado updateCounter y lastUpdated de las deps.
+  // lastUpdated causaba doble recálculo porque también disparaba el useEffect
+  // que incrementaba updateCounter, haciendo que fabricacionesFiltradas se
+  // recalculara dos veces por cada operación (una por lastUpdated, otra por updateCounter).
+  // fabricaciones ya recibe el array actualizado desde el Context, es suficiente.
   const fabricacionesFiltradas = useMemo(() => {
-    if (fabricaciones.length === 0) {
-      return [];
-    }
-    
-    const resultado = filterFabricaciones(fabricaciones, filterValues, defaultLineFilter);
-    return resultado;
-  }, [fabricaciones, filterValues, defaultLineFilter, lastUpdated, updateCounter]);
-
-  useEffect(() => {
-    if (lastUpdated) {
-      setUpdateCounter(prev => prev + 1);
-    }
-  }, [lastUpdated]);
+    if (fabricaciones.length === 0) return [];
+    return filterFabricaciones(fabricaciones, filterValues, defaultLineFilter);
+  }, [fabricaciones, filterValues, defaultLineFilter]);
 
   const hasActiveFilters = useMemo(() => {
     if (!filterValues || typeof filterValues !== 'object') return false;
-    
     const lineFilter = Array.isArray(filterValues.linea) ? filterValues.linea : [];
-    const hasLineFilter = lineFilter.length > 0;
-    
     const hasOtherFilters = Object.entries(filterValues).some(([key, val]) => {
       if (key === 'linea') return false;
       if (key === 'fchObjetivo') return val !== null && val !== undefined && val !== '';
       return Array.isArray(val) && val.length > 0;
     });
-    
-    return hasLineFilter || hasOtherFilters;
+    return lineFilter.length > 0 || hasOtherFilters;
   }, [filterValues]);
 
   const availableLines = useMemo(() => {
     if (fabricaciones.length === 0) return [];
-    
     const lines = new Set<string>();
     for (const fab of fabricaciones) {
-      if (fab.Linea && typeof fab.Linea === 'string' && fab.Linea.trim()) {
-        lines.add(fab.Linea.trim());
-      }
+      if (fab.Linea?.trim()) lines.add(fab.Linea.trim());
     }
     return Array.from(lines).sort();
   }, [fabricaciones]);
 
   const filterOptions = useMemo(() => {
-    const dataForOptions = fabricaciones;
-
-    if (!Array.isArray(dataForOptions) || dataForOptions.length === 0) {
-      return {
-        linea: availableLines,
-        numWO: [],
-        numDoc: [],
-        equipo: [],
-        estadoWO: [],
-        tipDoc: [],
-        articulo: [],
-        proveedor: []
-      };
+    if (!Array.isArray(fabricaciones) || fabricaciones.length === 0) {
+      return { linea: availableLines, numWO: [], numDoc: [], equipo: [], estadoWO: [], tipDoc: [], articulo: [], proveedor: [] };
     }
 
     const extractValues = (key: keyof IFabricacionConHoras): string[] => {
       const values = new Set<string>();
-      for (const fab of dataForOptions) {
-        if (fab && fab[key] != null) {
+      for (const fab of fabricaciones) {
+        if (fab[key] != null) {
           const val = String(fab[key]).trim();
-          if (val !== '') {
-            values.add(val);
-          }
+          if (val) values.add(val);
         }
       }
       return Array.from(values).sort();
@@ -211,56 +279,43 @@ const Simulator: React.FC = () => {
       numWO: extractValues('NumWO'),
       numDoc: extractValues('Numero_de_pedido'),
       equipo: extractValues('Equipo'),
-      estadoWO: dataForOptions.map(fab => {
-        return fab.Estado_WO === 1 ? 'Activo' : 
-               fab.Estado_WO === 2 ? 'En Proceso' : 
-               fab.Estado_WO === 3 ? 'Completado' : 
-               fab.Estado_WO === 0 ? 'Pendiente' : 
-               `Estado ${fab.Estado_WO || 'N/A'}`;
-      }).filter((val, index, arr) => arr.indexOf(val) === index).sort(),
+      estadoWO: fabricaciones
+        .map(fab =>
+          fab.Estado_WO === 1 ? 'Activo' :
+          fab.Estado_WO === 2 ? 'En Proceso' :
+          fab.Estado_WO === 3 ? 'Completado' :
+          fab.Estado_WO === 0 ? 'Pendiente' :
+          `Estado ${fab.Estado_WO || 'N/A'}`
+        )
+        .filter((val, i, arr) => arr.indexOf(val) === i)
+        .sort(),
       tipDoc: extractValues('Tipo_de_pedido'),
       articulo: [] as string[],
       proveedor: [] as string[]
     };
   }, [fabricaciones, availableLines]);
 
-  useEffect(() => {
-    if (fabricacionesFiltradas.length >= 0) {
-      setGanttWorkOrders(fabricacionesFiltradas);
-      setGanttDataLoaded(true);
-    }
-  }, [fabricacionesFiltradas]);
-
   const availableWOs = useMemo(() => {
-    return fabricacionesFiltradas.map((_, index) => `wo_${index}`);
+    return fabricacionesFiltradas.map((_, i) => `wo_${i}`);
   }, [fabricacionesFiltradas]);
 
   const handleReorderWO = useCallback((reorderedWOIds: string[]) => {
     if (Array.isArray(reorderedWOIds)) {
-      setSelectedWorkOrderIds(prev => 
+      setSelectedWorkOrderIds(prev =>
         Array.isArray(prev) && prev.length > 0 ? reorderedWOIds : prev
       );
     }
   }, []);
 
   const handleFilterChange = useCallback((newFilters: FilterValues) => {
-    if (!newFilters || typeof newFilters !== 'object') {
-      console.warn('handleFilterChange: newFilters no es válido');
-      return;
-    }
-
-    const currentFilters = filterValuesRef.current;
-    const hasChanged = JSON.stringify(currentFilters) !== JSON.stringify(newFilters);
-    
-    if (hasChanged) {
-      setFilterValues(newFilters);
-    }
+    if (!newFilters || typeof newFilters !== 'object') return;
+    const hasChanged = JSON.stringify(filterValuesRef.current) !== JSON.stringify(newFilters);
+    if (hasChanged) setFilterValues(newFilters);
   }, []);
 
   const clearAllFilters = useCallback(() => {
-    const currentLine = defaultLineFilter || DEFAULT_LINE;
     setFilterValues({
-      linea: [currentLine],
+      linea: [defaultLineFilter || DEFAULT_LINE],
       numWO: [],
       numDoc: [],
       equipo: [],
@@ -270,56 +325,29 @@ const Simulator: React.FC = () => {
       proveedor: [],
       fchObjetivo: null
     });
-  }, [defaultLineFilter, DEFAULT_LINE]);
+  }, [defaultLineFilter]);
 
   const handleDefaultLineChange = useCallback((line: string) => {
     if (typeof line === 'string' && line.trim() && setDefaultLineFilter) {
       const trimmedLine = line.trim();
-      const currentStoredLine = getStoredLine();
-      
-      if (currentStoredLine !== trimmedLine) {
-        saveLineToStorage(trimmedLine);
-      }
-      
+      if (getStoredLine() !== trimmedLine) saveLineToStorage(trimmedLine);
       setDefaultLineFilter(trimmedLine);
     }
   }, [setDefaultLineFilter, saveLineToStorage, getStoredLine]);
 
   useEffect(() => {
-    if (hasInitialized) {
-      return;
-    }
-    
-    if (setDefaultLineFilter && fabricaciones.length > 0 && availableLines.length > 0) {
-      const storedLine = getStoredLine();
-      const hasStoredLine = availableLines.includes(storedLine);
-      const hasDefaultLine = availableLines.includes(DEFAULT_LINE);
-      
-      if (hasStoredLine) {
-        setDefaultLineFilter(storedLine);
-        setFilterValues(prev => ({
-          ...prev,
-          linea: [storedLine]
-        }));
-      } else if (hasDefaultLine) {
-        setDefaultLineFilter(DEFAULT_LINE);
-        setFilterValues(prev => ({
-          ...prev,
-          linea: [DEFAULT_LINE]
-        }));
-        saveLineToStorage(DEFAULT_LINE);
-      } else {
-        const firstLine = availableLines[0];
-        setDefaultLineFilter(firstLine);
-        setFilterValues(prev => ({
-          ...prev,
-          linea: [firstLine]
-        }));
-        saveLineToStorage(firstLine);
-      }
-      
-      setHasInitialized(true);
-    }
+    if (hasInitialized || !setDefaultLineFilter || fabricaciones.length === 0 || availableLines.length === 0) return;
+
+    const storedLine = getStoredLine();
+    const lineToUse =
+      availableLines.includes(storedLine) ? storedLine :
+      availableLines.includes(DEFAULT_LINE) ? DEFAULT_LINE :
+      availableLines[0];
+
+    setDefaultLineFilter(lineToUse);
+    setFilterValues(prev => ({ ...prev, linea: [lineToUse] }));
+    saveLineToStorage(lineToUse);
+    setHasInitialized(true);
   }, [fabricaciones.length, availableLines.length]);
 
   if (isLoading) {
@@ -336,172 +364,39 @@ const Simulator: React.FC = () => {
   if (error) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-red-800 mb-2">Error al cargar datos</h3>
-            <p className="text-red-600 mb-4">{String(error)}</p>
-            <button 
-              onClick={() => window.location.reload()}
-              className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors"
-            >
-              Recargar página
-            </button>
-          </div>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+          <h3 className="text-lg font-semibold text-red-800 mb-2">Error al cargar datos</h3>
+          <p className="text-red-600 mb-4">{String(error)}</p>
+          <button onClick={() => window.location.reload()} className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
+            Recargar página
+          </button>
         </div>
       </div>
     );
   }
 
-  const SafeGanttWOs = () => {
-    if (fabricacionesFiltradas.length === 0) {
-      return (
-        <div className="flex items-center justify-center h-full p-8">
-          <div className="bg-white rounded-lg shadow-lg p-6 max-w-lg w-full">
-            <div className="text-center">
-              <svg
-                className="mx-auto h-12 w-12 text-gray-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M12 20a8 8 0 100-16 8 8 0 000 16z"
-                />
-              </svg>
-              <h3 className="mt-4 text-lg font-medium text-gray-900">
-                No se encontraron órdenes de trabajo
-              </h3>
-              <p className="mt-2 text-sm text-gray-500">
-                No hay resultados para los filtros seleccionados. Prueba a modificar los criterios de búsqueda.
-              </p>
-              <div className="mt-4">
-                <button
-                  onClick={clearAllFilters}
-                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  Limpiar filtros
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <GanttWOs 
-        filteredWorkOrders={fabricacionesFiltradas}
-        filterActive={hasActiveFilters}
-        refetchFabricaciones={async () => {}}
-      />
-    );
-  };
-
-  const SafeDetailTablesPanel = () => {
-    const baseProps = {
-      workOrders: [],
-      workOrderColors: workOrderColors,
-      availableComponents: availableComponents,
-      componentAvailability: componentAvailability,
-      onReorderWO: handleReorderWO,
-      selectedWorkOrderIds: selectedWorkOrderIds,
-      availableWOs: availableWOs,
-      filteredFabrications: fabricacionesFiltradas,
-      useFilteredData: hasActiveFilters,
-      defaultLineFilter: defaultLineFilter,
-      lastUpdated: lastUpdated,
-      ganttCapacity: undefined,
-      ganttWorkingDays: undefined
-    };
-
-    try {
-      return <DetailTablesPanel {...baseProps} />;
-    } catch (error) {
-      console.warn('Error con DetailTablesPanel:', error);
-      return (
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center">
-            <p className="text-gray-600 mb-2">Error cargando tablas de detalle</p>
-            <p className="text-sm text-gray-500">
-              Datos del contexto: {fabricaciones.length} fabricaciones
-            </p>
-          </div>
-        </div>
-      );
-    }
-  };
-
-  const SafeScenarioTabs = () => {
-    const propVariations = [
-      { selectedScenario: activeScenario, onScenarioChange: setActiveScenario },
-      { activeScenario: activeScenario, onScenarioSelect: setActiveScenario },
-      { scenario: activeScenario, onChange: setActiveScenario },
-      { current: activeScenario, onSelect: setActiveScenario }
-    ];
-
-    for (let i = 0; i < propVariations.length; i++) {
-      try {
-        return <ScenarioTabs {...propVariations[i]} />;
-      } catch (error) {
-        console.warn(`Error con ScenarioTabs propVariations[${i}]`);
-        continue;
-      }
-    }
-
-    return (
-      <div className="px-4 py-2 bg-gray-100 rounded">
-        <span className="text-sm text-gray-600">Scenarios</span>
-      </div>
-    );
-  };
-
-  const SafeControlButtons = () => {
-    const propVariations = [
-      { scenarioId: activeScenario, currentView: "details", onViewChange: () => {} },
-      { scenario: activeScenario, view: "details", onViewChange: () => {} },
-      { activeScenario: activeScenario, selectedView: "details", onViewSelect: () => {} }
-    ];
-
-    for (let i = 0; i < propVariations.length; i++) {
-      try {
-        return <ControlButtons {...propVariations[i]} />;
-      } catch (error) {
-        console.warn(`Error con ControlButtons propVariations[${i}]`);
-        continue;
-      }
-    }
-
-    return (
-      <div className="flex space-x-2">
-        <button className="px-3 py-1 bg-blue-500 text-white rounded text-sm">
-          Control
-        </button>
-      </div>
-    );
-  };
-
   return (
     <div className="w-full h-screen flex flex-col overflow-hidden">
       <div className="flex justify-between items-center p-2 bg-white border-b flex-shrink-0">
-        <SafeScenarioTabs />
+        <ScenarioTabs selectedScenario={activeScenario} onScenarioChange={setActiveScenario} />
         <div className="flex items-center space-x-2">
-          <SafeControlButtons />
+          <ControlButtons scenarioId={activeScenario} currentView="details" onViewChange={() => {}} />
         </div>
       </div>
 
       <div className="flex-1 overflow-hidden">
-        <ResizableVerticalPanel 
+        <ResizableVerticalPanel
           top={
             <div className="flex h-full">
               <div className="w-3/4 border-r overflow-hidden">
-                <SafeGanttWOs />
+                <GanttPanel
+                  fabricacionesFiltradas={fabricacionesFiltradas}
+                  hasActiveFilters={hasActiveFilters}
+                  onClearFilters={clearAllFilters}
+                />
               </div>
-
               <div className="w-1/4 overflow-hidden">
-                <FilterPanel 
+                <FilterPanel
                   filterValues={filterValues}
                   onFilterChange={handleFilterChange}
                   onClearFilters={clearAllFilters}
@@ -516,11 +411,22 @@ const Simulator: React.FC = () => {
               </div>
             </div>
           }
-
           bottom={
             <div className="flex flex-col h-full overflow-hidden">
               <div className="flex-1 overflow-hidden">
-                <SafeDetailTablesPanel />
+                <DetailPanel
+                  workOrderColors={workOrderColors}
+                  availableComponents={availableComponents}
+                  componentAvailability={componentAvailability}
+                  handleReorderWO={handleReorderWO}
+                  selectedWorkOrderIds={selectedWorkOrderIds}
+                  availableWOs={availableWOs}
+                  fabricacionesFiltradas={fabricacionesFiltradas}
+                  hasActiveFilters={hasActiveFilters}
+                  defaultLineFilter={defaultLineFilter}
+                  lastUpdated={lastUpdated}
+                  fabricaciones={fabricaciones}
+                />
               </div>
             </div>
           }

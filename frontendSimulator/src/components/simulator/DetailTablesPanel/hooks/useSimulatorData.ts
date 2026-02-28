@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { IWorkOrderFrontend, IPalet } from '../../../../interfaces/ISimulatorData';
 import { IFabricacionConHoras } from '../../../../interfaces/IFabricacionConHoras';
 import {
@@ -34,12 +34,11 @@ interface UseSimulatorDataResult {
   componentAvailability: Record<string, Record<string, any>>;
 }
 
-// ✅ CACHE GLOBAL para paletsMap (evita recalcular)
 let globalPaletsMap: Map<string, IPalet> | null = null;
 let globalPaletsLength = 0;
 
 const mapFabricacionToWorkOrder = (
-  fabricacion: IFabricacionConHoras, 
+  fabricacion: IFabricacionConHoras,
   paletsMap: Map<string, IPalet>
 ): IWorkOrderFrontend => {
   if (!fabricacion.NumWO || !fabricacion.Linea || !fabricacion.Fch_Objetivo) {
@@ -48,28 +47,17 @@ const mapFabricacionToWorkOrder = (
 
   const uniqueId = `${fabricacion.NumWO}-${fabricacion.Fch_Objetivo}-${fabricacion.Linea}-${fabricacion.Secuencia || 0}`;
   const palet = paletsMap.get(fabricacion.NumWO);
-  
+
   const parseHorasTotales = (valor: any): number => {
     if (valor === undefined || valor === null) return 0;
-
     if (typeof valor === 'string') {
       const trimmed = valor.trim();
       if (trimmed === '' || trimmed === 'null' || trimmed === 'undefined') return 0;
-      const cleanString = trimmed.replace(/[^0-9.,]/g, '').replace(',', '.');
-      const parsed = parseFloat(cleanString);
+      const parsed = parseFloat(trimmed.replace(/[^0-9.,]/g, '').replace(',', '.'));
       return isNaN(parsed) ? 0 : parsed;
     }
-    
-    if (typeof valor === 'number') {
-      return isNaN(valor) ? 0 : valor;
-    }
-    
-    try {
-      const parsed = parseFloat(String(valor));
-      return isNaN(parsed) ? 0 : parsed;
-    } catch {
-      return 0;
-    }
+    if (typeof valor === 'number') return isNaN(valor) ? 0 : valor;
+    try { return parseFloat(String(valor)) || 0; } catch { return 0; }
   };
 
   return {
@@ -86,10 +74,7 @@ const mapFabricacionToWorkOrder = (
     fchAlbarAn: fabricacion.Fch_Albaran || '',
     importe: fabricacion.Importe || 0,
     cshTotal: parseHorasTotales(fabricacion.horas_totales_de_la_wo),
-    paletInfo: palet ? {
-      num_de_palet: palet.num_de_palet,
-      palet_2nd_number: palet.palet_2nd_number
-    } : null
+    paletInfo: palet ? { num_de_palet: palet.num_de_palet, palet_2nd_number: palet.palet_2nd_number } : null
   };
 };
 
@@ -97,28 +82,15 @@ const MOCK_COMPONENT_DATA = {
   generarComponentesMock: (workOrders: IWorkOrderFrontend[]): Record<string, string[]> => {
     const result: Record<string, string[]> = {};
     const equipos = [...new Set(workOrders.map(wo => wo.equipo))].filter(Boolean);
-    
-    equipos.forEach((equipo) => {
+    equipos.forEach(equipo => {
       const numComponentes = Math.floor(Math.random() * 4) + 2;
-      const componentesEquipo: string[] = [];
-      
-      for (let i = 1; i <= numComponentes; i++) {
-        componentesEquipo.push(`COMP-${equipo}-${i}`);
-      }
-      
-      workOrders
-        .filter(wo => wo.equipo === equipo)
-        .forEach(wo => {
-          result[wo.id] = componentesEquipo;
-        });
+      const componentesEquipo = Array.from({ length: numComponentes }, (_, i) => `COMP-${equipo}-${i + 1}`);
+      workOrders.filter(wo => wo.equipo === equipo).forEach(wo => { result[wo.id] = componentesEquipo; });
     });
-    
     return result;
   },
-  
   generarDisponibilidadMock: (componentes: string[]): Record<string, Record<string, any>> => {
     const result: Record<string, Record<string, any>> = {};
-    
     componentes.forEach(comp => {
       result[comp] = {
         stock: Math.floor(Math.random() * 50),
@@ -127,15 +99,14 @@ const MOCK_COMPONENT_DATA = {
         disponible: Math.floor(Math.random() * 80) - 10,
       };
     });
-    
     return result;
   }
 };
 
 export const UseSimulatorData = (): UseSimulatorDataResult => {
-  const { 
-    data: fabricacionesData = [], 
-    isLoading: fabricacionesLoading, 
+  const {
+    data: fabricacionesData = [],
+    isLoading: fabricacionesLoading,
     error: fabricacionesError,
     refetch: refetchFabricaciones
   } = useFabricacionesConHoras();
@@ -146,7 +117,6 @@ export const UseSimulatorData = (): UseSimulatorDataResult => {
   const [cacheStats, setCacheStats] = useState<any>({});
   const [defaultLineFilter, setDefaultLineFilter] = useState<string | null>("L8");
   const [componentesMap, setComponentesMap] = useState<Record<string, string[]>>({});
-
   const [palets, setPalets] = useState<IPalet[]>([]);
   const [paletsLoading, setPaletsLoading] = useState(false);
   const [paletsError, setPaletsError] = useState<string | null>(null);
@@ -154,213 +124,171 @@ export const UseSimulatorData = (): UseSimulatorDataResult => {
   const { getCached, invalidate, getStats } = UseSmartCache();
   const monitor = UsePerformanceMonitor();
 
+  // ✅ FIX: refs estables para getCached y getStats, evita que los useCallback
+  // de loadPalets/loadWorkOrderColors se recreen en cada render y rompan el
+  // useEffect que los llama (que tenía ambas funciones en sus deps).
+  const getCachedRef = useRef(getCached);
+  const getStatsRef  = useRef(getStats);
+  getCachedRef.current = getCached;
+  getStatsRef.current  = getStats;
+
   const loadPalets = useCallback(async () => {
     try {
       setPaletsLoading(true);
       setPaletsError(null);
-      
-      const paletsData = await getCached('palets', getPalets, 5 * 60 * 1000);
+      const paletsData = await getCachedRef.current('palets', getPalets, 5 * 60 * 1000);
       setPalets(paletsData);
-      setCacheStats(getStats());
+      setCacheStats(getStatsRef.current());
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error cargando palets';
-      setPaletsError(errorMessage);
+      setPaletsError(error instanceof Error ? error.message : 'Error cargando palets');
       console.error('❌ Error cargando palets:', error);
     } finally {
       setPaletsLoading(false);
     }
-  }, [getCached, getStats]);
+  }, []); // ✅ Sin deps — usa refs internas
 
-  // ✅ OPTIMIZADO: Usar cache global para paletsMap
+  const loadWorkOrderColors = useCallback(async () => {
+    try {
+      setColorsLoading(true);
+      setColorsError(null);
+      const colorsData = await getCachedRef.current('workOrderColors', getWorkOrderColors, 5 * 60 * 1000);
+      setWorkOrderColors(colorsData);
+      setCacheStats(getStatsRef.current());
+    } catch (error) {
+      setColorsError(error instanceof Error ? error.message : 'Error cargando colores');
+      console.error('❌ Error cargando colores:', error);
+    } finally {
+      setColorsLoading(false);
+    }
+  }, []); // ✅ Sin deps — usa refs internas
+
   const paletsMap = useMemo(() => {
-    if (palets.length === 0) {
-      globalPaletsMap = null;
-      globalPaletsLength = 0;
-      return new Map<string, IPalet>();
-    }
-
-    // Solo recalcular si cambió el length
-    if (globalPaletsMap && globalPaletsLength === palets.length) {
-      return globalPaletsMap;
-    }
-
+    if (palets.length === 0) { globalPaletsMap = null; globalPaletsLength = 0; return new Map<string, IPalet>(); }
+    if (globalPaletsMap && globalPaletsLength === palets.length) return globalPaletsMap;
     globalPaletsMap = createPaletsMap(palets);
     globalPaletsLength = palets.length;
     return globalPaletsMap;
-  }, [palets.length]); // ✅ Solo length
+  }, [palets.length]);
 
-  // ✅ OPTIMIZADO: Dependencies solo con .length
   const allWorkOrders = useMemo(() => {
-    if (!fabricacionesData || fabricacionesData.length === 0) {
-      return [];
-    }
-
-    const validFabricaciones = fabricacionesData.filter((fabricacion) => {
-      return fabricacion.NumWO && fabricacion.Linea && fabricacion.Fch_Objetivo;
-    });
-    
+    if (!fabricacionesData?.length) return [];
     const processedKeys = new Set<string>();
     const workOrders: IWorkOrderFrontend[] = [];
-    
-    validFabricaciones.forEach((fabricacion) => {
-      const uniqueKey = `${fabricacion.NumWO}-${fabricacion.Fch_Objetivo}-${fabricacion.Linea}-${fabricacion.Secuencia || 0}`;
-      
-      if (!processedKeys.has(uniqueKey)) {
-        processedKeys.add(uniqueKey);
-        
-        try {
-          const mappedWO = mapFabricacionToWorkOrder(fabricacion, paletsMap);
-          workOrders.push(mappedWO);
-        } catch (error) {
-          console.error('❌ Error mapeando fabricación:', {
-            NumWO: fabricacion.NumWO,
-            error: error instanceof Error ? error.message : error
-          });
+    fabricacionesData
+      .filter(f => f.NumWO && f.Linea && f.Fch_Objetivo)
+      .forEach(fabricacion => {
+        const key = `${fabricacion.NumWO}-${fabricacion.Fch_Objetivo}-${fabricacion.Linea}-${fabricacion.Secuencia || 0}`;
+        if (!processedKeys.has(key)) {
+          processedKeys.add(key);
+          try { workOrders.push(mapFabricacionToWorkOrder(fabricacion, paletsMap)); }
+          catch (e) { console.error('❌ Error mapeando fabricación:', fabricacion.NumWO, e); }
         }
-      }
-    });
-    
+      });
     return workOrders;
   }, [
     fabricacionesData.length,
     fabricacionesData[0]?.NumWO,
     fabricacionesData[fabricacionesData.length - 1]?.NumWO,
     paletsMap
-  ]); // ✅ Dependencies optimizadas
+  ]);
 
-  const loadWorkOrderColors = useCallback(async () => {
-    try {
-      setColorsLoading(true);
-      setColorsError(null);
-      
-      const colorsData = await getCached('workOrderColors', getWorkOrderColors, 5 * 60 * 1000);
-      setWorkOrderColors(colorsData);
-      setCacheStats(getStats());
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error cargando colores';
-      setColorsError(errorMessage);
-      console.error('❌ Error cargando colores:', error);
-    } finally {
-      setColorsLoading(false);
-    }
-  }, [getCached, getStats]);
-
+  // ✅ FIX: hasLoaded guard — solo carga colores y palets UNA VEZ cuando
+  // llegan las fabricaciones por primera vez. Antes tenía loadWorkOrderColors
+  // y loadPalets en las deps, lo que causaba que el efecto se re-ejecutara
+  // cada vez que esas funciones se recreaban.
+  const hasLoadedAuxData = useRef(false);
   useEffect(() => {
-    if (fabricacionesData.length > 0) {
+    if (fabricacionesData.length > 0 && !hasLoadedAuxData.current) {
+      hasLoadedAuxData.current = true;
       loadWorkOrderColors();
       loadPalets();
     }
-  }, [fabricacionesData.length, loadWorkOrderColors, loadPalets]);
+  }, [fabricacionesData.length]); // ✅ Solo length, sin las funciones en deps
 
   useEffect(() => {
     if (allWorkOrders.length > 0) {
-      const nuevosMockComponentes = MOCK_COMPONENT_DATA.generarComponentesMock(allWorkOrders);
-      setComponentesMap(nuevosMockComponentes);
+      setComponentesMap(MOCK_COMPONENT_DATA.generarComponentesMock(allWorkOrders));
     }
-  }, [allWorkOrders.length]); // ✅ Solo length
+  }, [allWorkOrders.length]);
 
   useEffect(() => {
     if (defaultLineFilter && allWorkOrders.length > 0) {
       const hasDefaultLine = allWorkOrders.some(wo => wo.linea === defaultLineFilter);
-      
       if (!hasDefaultLine) {
         const availableLines = [...new Set(allWorkOrders.map(wo => wo.linea))].filter(Boolean);
-        if (availableLines.length > 0) {
-          setDefaultLineFilter(availableLines[0]);
-        }
+        if (availableLines.length > 0) setDefaultLineFilter(availableLines[0]);
       }
     }
   }, [allWorkOrders.length, defaultLineFilter]);
 
   const loading = fabricacionesLoading || colorsLoading || paletsLoading;
-  const error = fabricacionesError ? 
-    (fabricacionesError instanceof Error ? fabricacionesError.message : 'Error cargando fabricaciones') :
-    colorsError || paletsError;
+  const error = fabricacionesError
+    ? (fabricacionesError instanceof Error ? fabricacionesError.message : 'Error cargando fabricaciones')
+    : colorsError || paletsError;
 
-  const updateWODate = useCallback(
-    async (woId: string, newDate: string): Promise<boolean> => {
-      return monitor.measureAsync('update-wo-date', async () => {
-        try {
-          const success = await updateWorkOrderDate(woId, newDate);
+  const invalidateRef = useRef(invalidate);
+  invalidateRef.current = invalidate;
 
-          if (success) {
-            await refetchFabricaciones();
-            invalidate('workOrderColors');
-            invalidate('palets');
-            setCacheStats(getStats());
-            return true;
-          }
-          return false;
-        } catch {
-          return false;
+  const updateWODate = useCallback(async (woId: string, newDate: string): Promise<boolean> => {
+    return monitor.measureAsync('update-wo-date', async () => {
+      try {
+        const success = await updateWorkOrderDate(woId, newDate);
+        if (success) {
+          await refetchFabricaciones();
+          invalidateRef.current('workOrderColors');
+          invalidateRef.current('palets');
+          setCacheStats(getStatsRef.current());
+          return true;
         }
-      });
-    },
-    [monitor, refetchFabricaciones, invalidate, getStats]
-  );
+        return false;
+      } catch { return false; }
+    });
+  }, [monitor, refetchFabricaciones]);
 
-  const updateWOSequence = useCallback(
-    async (updates: { wo: string; secuencia: number }[]): Promise<boolean> => {
-      return monitor.measureAsync('update-wo-sequence-batch', async () => {
-        try {
-          const success = await updateWorkOrderSequence(updates);
-
-          if (success) {
-            await refetchFabricaciones();
-            invalidate('workOrderColors');
-            invalidate('palets');
-            setCacheStats(getStats());
-            return true;
-          }
-          return false;
-        } catch {
-          return false;
+  const updateWOSequence = useCallback(async (updates: { wo: string; secuencia: number }[]): Promise<boolean> => {
+    return monitor.measureAsync('update-wo-sequence-batch', async () => {
+      try {
+        const success = await updateWorkOrderSequence(updates);
+        if (success) {
+          await refetchFabricaciones();
+          invalidateRef.current('workOrderColors');
+          invalidateRef.current('palets');
+          setCacheStats(getStatsRef.current());
+          return true;
         }
-      });
-    },
-    [monitor, refetchFabricaciones, invalidate, getStats]
-  );
+        return false;
+      } catch { return false; }
+    });
+  }, [monitor, refetchFabricaciones]);
 
   const refresh = useCallback(async () => {
-    await Promise.all([
-      refetchFabricaciones(),
-      loadWorkOrderColors(),
-      loadPalets()
-    ]);
+    await Promise.all([refetchFabricaciones(), loadWorkOrderColors(), loadPalets()]);
   }, [refetchFabricaciones, loadWorkOrderColors, loadPalets]);
 
-  const refreshCache = useCallback(() => {
-    setCacheStats(getStats());
-  }, [getStats]);
+  const refreshCache = useCallback(() => { setCacheStats(getStatsRef.current()); }, []);
 
   const clearCache = useCallback(() => {
     invalidateWorkOrderCache();
-    invalidate('workOrderColors');
-    invalidate('palets');
-    setCacheStats(getStats());
-  }, [invalidate, getStats]);
+    invalidateRef.current('workOrderColors');
+    invalidateRef.current('palets');
+    setCacheStats(getStatsRef.current());
+  }, []);
 
-  const availableWOs = useMemo(() => {
-    return monitor.measureSync('calculate-available-wos', () =>
-      allWorkOrders.map((wo) => wo.id)
-    );
-  }, [allWorkOrders.length, monitor]); // ✅ Solo length
+  const availableWOs = useMemo(() =>
+    monitor.measureSync('calculate-available-wos', () => allWorkOrders.map(wo => wo.id)),
+    [allWorkOrders.length, monitor]
+  );
 
   const availableComponents = useMemo(() => {
-    const allComponentIds = new Set<string>();
-    
-    Object.values(componentesMap).forEach(componentesList => {
-      componentesList.forEach(componentId => {
-        allComponentIds.add(componentId);
-      });
-    });
-    
-    return Array.from(allComponentIds).sort();
+    const all = new Set<string>();
+    Object.values(componentesMap).forEach(list => list.forEach(id => all.add(id)));
+    return Array.from(all).sort();
   }, [componentesMap]);
 
-  const componentAvailability = useMemo(() => {
-    return MOCK_COMPONENT_DATA.generarDisponibilidadMock(availableComponents);
-  }, [availableComponents.length]); // ✅ Solo length
+  const componentAvailability = useMemo(() =>
+    MOCK_COMPONENT_DATA.generarDisponibilidadMock(availableComponents),
+    [availableComponents.length]
+  );
 
   return {
     workOrders: allWorkOrders,
@@ -376,7 +304,7 @@ export const UseSimulatorData = (): UseSimulatorDataResult => {
     clearCache,
     defaultLineFilter,
     setDefaultLineFilter,
-    filteredWorkOrders: allWorkOrders, // ✅ Sin useMemo redundante
+    filteredWorkOrders: allWorkOrders,
     allWorkOrders,
     availableComponents,
     componentAvailability,
