@@ -1,27 +1,24 @@
-// components/DetailTablesPanel/Types.ts
-import { IFabricacionConHoras } from '../../../interfaces/IFabricacionConHoras'; // ✅ AGREGAR IMPORT
+// components/DetailTablesPanel/types.ts
+import { IFabricacionConHoras } from '../../../interfaces/IFabricacionConHoras';
 
 export interface WorkOrder {
   id: string;
   numWO: string;
   equipo: string;
-  secuencia: string | number; // Changed from number to string | number
+  secuencia: string | number;
   linea: string;
-  numDoc: string | null; // 🔧 Permitir null
-  tipDoc: string | null; // 🔧 Permitir null
+  numDoc: string | null;
+  tipDoc: string | null;
   estadoWO: string;
   fchObjetivo: string;
-  fchAcuse: string | null; // 🔧 Permitir null
-  fchAlbarAn: string | null; // 🔧 Permitir null
-  importe: number; // 🔧 Permitir null (ya estaba como number)
+  fchAcuse: string | null;
+  fchAlbarAn: string | null;
+  importe: number;
   cshTotal: number;
-  // ✅ NUEVA: Información de palets
   paletInfo?: {
-    num_de_palet: string | null; // 🔧 Permitir null
+    num_de_palet: string | null;
     palet_2nd_number?: string | null;
   } | null;
-  
-  // ✅ NUEVAS PROPIEDADES PARA SINCRONIZACIÓN
   cliente?: string;
   descripcion?: string;
   cantidad?: number;
@@ -45,19 +42,17 @@ export interface ComponentAvailability {
 
 export interface DetailTablesPanelProps {
   workOrders?: WorkOrder[];
-  workOrderColors?: Record<string, string>;
   availableComponents?: string[];
   componentAvailability?: ComponentAvailability;
   onReorderWO?: (reorderedWOIds: string[]) => void;
   selectedWorkOrderIds?: string[];
   availableWOs?: string[];
-  
-  // ✅ PROPS PARA SINCRONIZACIÓN ACTUALIZADAS
-  filteredFabrications?: IFabricacionConHoras[];  // Las mismas fabricaciones filtradas del Gantt
-  useFilteredData?: boolean;  // Flag para usar datos filtrados o todos
-  defaultLineFilter?: string; // ✅ NUEVA PROP AÑADIDA
-  
-  // Función para notificar actualizaciones exitosas (opcional)
+  filteredFabrications?: IFabricacionConHoras[];
+  useFilteredData?: boolean;
+  defaultLineFilter?: string | null;
+  lastUpdated?: Date | null;
+  ganttCapacity?: any;
+  ganttWorkingDays?: any;
   onWorkOrderUpdated?: (woId: string, field: string, value: any) => void;
 }
 

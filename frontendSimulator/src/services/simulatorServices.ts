@@ -2,8 +2,6 @@
 import api from '../api';
 import { 
   IWorkOrderBackend, 
-  IWorkOrderColor, 
-  IComponentAvailabilityBackend,
   IFilterDataBackend,
   IWorkOrderFrontend,
   IPalet
@@ -89,7 +87,7 @@ export const getWorkOrders = async (): Promise<IWorkOrderFrontend[]> => {
 };
 
 /**
- * ✅ NUEVA: Obtiene todos los palets (CON CACHE)
+ * Obtiene todos los palets (CON CACHE)
  */
 export const getPalets = async (): Promise<IPalet[]> => {
   const cacheKey = 'palets';
@@ -121,7 +119,7 @@ export const getPalets = async (): Promise<IPalet[]> => {
 };
 
 /**
- * ✅ NUEVA: Función para crear un mapa de palets por num_orden
+ * Función para crear un mapa de palets por num_orden
  */
 export const createPaletsMap = (palets: IPalet[]): Map<string, IPalet> => {
   const map = new Map<string, IPalet>();
@@ -134,45 +132,6 @@ export const createPaletsMap = (palets: IPalet[]): Map<string, IPalet> => {
   
   console.log(`🗺️ Mapa de palets creado: ${map.size} palets mapeados`);
   return map;
-};
-
-/**
- * ✅ CORREGIDO: Obtiene los colores de las WOs según disponibilidad (CON CACHE)
- */
-export const getWorkOrderColors = async (): Promise<Record<string, string>> => {
-  const cacheKey = 'workOrderColors';
-  
-  const cached = globalCache.get(cacheKey);
-  if (cached) {
-    console.log('📦 Usando colores desde cache');
-    return cached;
-  }
-  
-  try {
-    // ✅ CAMBIO CRÍTICO: Usar POST a /colores-wo-disponible
-    const response = await api.post<IWorkOrderColor[]>('/colores-wo-disponible', {
-      wos: [], // Vacío = obtener todos
-      limit: 10000 // Límite alto para obtener todos
-    });
-    
-    if (!Array.isArray(response?.data)) {
-      console.error('Estructura de respuesta inválida:', response);
-      return {};
-    }
-
-    const colorsMap: Record<string, string> = {};
-    response.data.forEach(item => {
-      colorsMap[item.wo] = item.color;
-    });
-
-    globalCache.set(cacheKey, colorsMap, 5 * 60 * 1000);
-    console.log(`✅ Colores cargados y cacheados: ${Object.keys(colorsMap).length} WOs`);
-    
-    return colorsMap;
-  } catch (error) {
-    console.error('Error al obtener colores de WO:', error);
-    return {};
-  }
 };
 
 /**
@@ -305,26 +264,25 @@ export const getComponentAvailability = async (): Promise<Record<string, Record<
 };
 
 /**
- * ✅ ACTUALIZADA: Función para invalidar todo el cache relacionado con work orders
+ * Función para invalidar todo el cache relacionado con work orders
  */
 export const invalidateWorkOrderCache = () => {
   console.log('🗑️ Invalidando todo el cache de work orders...');
   globalCache.invalidatePattern('workOrders');
-  globalCache.invalidatePattern('workOrderColors');
   globalCache.invalidatePattern('filterOptions');
   globalCache.invalidatePattern('componentAvailability');
   globalCache.invalidatePattern('palets');
 };
 
 /**
- * ✅ NUEVA: Función para obtener estadísticas del cache
+ * Función para obtener estadísticas del cache
  */
 export const getCacheStats = () => {
   return globalCache.getStats();
 };
 
 /**
- * ✅ NUEVA: Función para limpiar todo el cache (útil para debugging)
+ * Función para limpiar todo el cache (útil para debugging)
  */
 export const clearAllCache = () => {
   console.log('🧹 Limpiando todo el cache...');

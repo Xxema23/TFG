@@ -1,10 +1,10 @@
 import React, { memo, useCallback, useState, useRef } from 'react';
 import CapacityModal from '../capacity/CapacityModal';
-import { CapacityData } from '../../interfaces/Capacity';
-import { saveCapacities } from '../../services/CapacityService';
 import api from '../../api';
 import { useGlobalLoading } from '../../App';
 import { useFabricacionesContext } from '../../contexts/FabricacionesContext';
+import { useCapacity } from '../../contexts/CapacityContext';
+
 
 type ControlButtonsProps = {
   scenarioId: number | null;
@@ -17,7 +17,6 @@ const ControlButtons: React.FC<ControlButtonsProps> = memo(({
   currentView, 
   onViewChange 
 }) => {
-  const [isCapacityModalOpen, setIsCapacityModalOpen] = useState(false);
   const { setGlobalLoading } = useGlobalLoading();
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -28,37 +27,19 @@ const ControlButtons: React.FC<ControlButtonsProps> = memo(({
     savePendingChanges 
   } = useFabricacionesContext();
 
+  const {
+    isCapacityModalOpen,
+    openCapacityModal,
+    closeCapacityModal,
+    handleSaveCapacity,
+  } = useCapacity();
+
   const handleCapacityClick = useCallback(() => {
     if (scenarioId) {
-      setIsCapacityModalOpen(true);
+      openCapacityModal();
     }
-  }, [scenarioId]);
+  }, [scenarioId, openCapacityModal]);
 
-  const handleCloseCapacityModal = useCallback(() => {
-    setIsCapacityModalOpen(false);
-  }, []);
-
-  const handleSaveCapacities = useCallback(async (capacities: CapacityData[]) => {
-    if (!scenarioId) {
-      alert('Error: No hay escenario seleccionado');
-      return;
-    }
-    
-    try {
-      const response = await saveCapacities(scenarioId, capacities);
-      
-      if (response.success) {
-        const mensaje = response.message || `Se han guardado ${capacities.length} valores de capacidad exitosamente`;
-        alert(`✅ ${mensaje}`);
-        setIsCapacityModalOpen(false);
-      } else {
-        throw new Error(response.message || 'Error al guardar las capacidades');
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
-      alert(`❌ Error al guardar las capacidades:\n${errorMessage}`);
-    }
-  }, [scenarioId]);
 
   const checkImportStatus = useCallback(async () => {
     try {
@@ -242,9 +223,9 @@ const ControlButtons: React.FC<ControlButtonsProps> = memo(({
 
       <CapacityModal
         isOpen={isCapacityModalOpen}
-        onClose={handleCloseCapacityModal}
-        onSave={handleSaveCapacities}
-        scenarioId={scenarioId}
+        onClose={closeCapacityModal}
+        onSave={handleSaveCapacity}
+        scenarioId={scenarioId ?? 1}
       />
     </>
   );

@@ -33,7 +33,10 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const [lastModifiedDay, setLastModifiedDay] = useState<string | null>(null);
   const { dailyCapacities: capacity, workingDays } = useCapacity();
-
+  const capacityRef = useRef(capacity);
+  const workingDaysRef = useRef(workingDays);
+  useEffect(() => { capacityRef.current = capacity; }, [capacity]);
+  useEffect(() => { workingDaysRef.current = workingDays; }, [workingDays]);
   const {
   fabricaciones: fabricacionesFromContext,
     hasPendingChanges
@@ -393,8 +396,10 @@ const numWOsParaComponentes = useMemo(() => {
     });
 
     let finalFabs = allFabs;
-
-    if (capacity.length > 0 && workingDays.length > 0) {      
+   
+    const currentCapacity = capacityRef.current;
+    const currentWorkingDays = workingDaysRef.current;
+    if (currentCapacity.length > 0 && currentWorkingDays.length > 0) {   
       const normalizeDate = (date: string) => date.replace(' ', 'T').split('T')[0];
       const dropDate = normalizeDate(targetDay);
       const draggedSet = new Set(draggedNumWOs);
@@ -430,9 +435,9 @@ const numWOsParaComponentes = useMemo(() => {
       const capacityByDay = new Map<string, number>();
       const dayUsage = new Map<string, number>();
       
-      workingDays.forEach(day => {
-        const dayCapacity = capacity.find(c => c.date === day && c.line === targetLine);
-        const fallbackCapacity = capacity.find(c => c.line === targetLine)?.capacity || 8;
+      currentWorkingDays.forEach(day => {
+        const dayCapacity = currentCapacity.find(c => c.date === day && c.line === targetLine);
+        const fallbackCapacity = currentCapacity.find(c => c.line === targetLine)?.capacity || 8;
         capacityByDay.set(day, dayCapacity?.capacity || fallbackCapacity);
         dayUsage.set(day, 0);
       });
@@ -440,7 +445,7 @@ const numWOsParaComponentes = useMemo(() => {
       wosBeforeAffected.forEach(wo => {
         if (wo.Linea !== targetLine) return;
         const woDate = normalizeDate(wo.Fch_Objetivo);
-        if (workingDays.includes(woDate)) {
+        if (currentWorkingDays.includes(woDate)) {
           const woHours = parseFloat(wo.horas_totales_de_la_wo) || 0;
           const currentUsage = dayUsage.get(woDate) || 0;
           dayUsage.set(woDate, currentUsage + woHours);
@@ -458,10 +463,10 @@ const numWOsParaComponentes = useMemo(() => {
         const originalWODate = normalizeDate(wo.Fch_Objetivo);
         const startDay = draggedSet.has(wo.NumWO) ? dropDate : originalWODate;
         
-        let dayIndex = workingDays.findIndex(d => d === startDay);
+        let dayIndex = currentWorkingDays.findIndex(d => d === startDay);
         
-        while (dayIndex < workingDays.length && remainingHours > 0) {
-          const currentDay = workingDays[dayIndex];
+        while (dayIndex < currentWorkingDays.length && remainingHours > 0) {
+          const currentDay = currentWorkingDays[dayIndex];
           const dayCapacity = capacityByDay.get(currentDay) || 8;
           const dayUsed = dayUsage.get(currentDay) || 0;
           const availableCapacity = dayCapacity - dayUsed;
@@ -545,7 +550,7 @@ const numWOsParaComponentes = useMemo(() => {
     onGanttOrdersChanged(contextoActualizado);
     refetchComponentes();
 
-  }, [fabricacionesFromContext, onGanttOrdersChanged, capacity, workingDays, refetchComponentes]);
+  }, [fabricacionesFromContext, onGanttOrdersChanged, refetchComponentes]);
 
   
   const hoverRafId = useRef<number | null>(null);

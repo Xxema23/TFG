@@ -63,10 +63,7 @@ const filterFabricaciones = (
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ✅ FIX CRÍTICO: Componentes declarados FUERA de Simulator para evitar re-mount
-// en cada render. Antes estaban definidos dentro del cuerpo de Simulator como
-// funciones locales (SafeGanttWOs, SafeDetailTablesPanel...), lo que hacía que
-// React los tratara como componentes nuevos en cada render y los desmontara
-// y remontara completamente, reseteando todos sus hooks internos.
+// en cada render.
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface GanttPanelProps {
@@ -115,7 +112,6 @@ const GanttPanel = React.memo(({
 });
 
 interface DetailPanelProps {
-  workOrderColors: Record<string, string>;
   availableComponents: string[];
   componentAvailability: Record<string, any>;
   handleReorderWO: (ids: string[]) => void;
@@ -129,7 +125,6 @@ interface DetailPanelProps {
 }
 
 const DetailPanel = React.memo(({
-  workOrderColors,
   availableComponents,
   componentAvailability,
   handleReorderWO,
@@ -145,7 +140,6 @@ const DetailPanel = React.memo(({
     return (
       <DetailTablesPanel
         workOrders={[]}
-        workOrderColors={workOrderColors}
         availableComponents={availableComponents}
         componentAvailability={componentAvailability}
         onReorderWO={handleReorderWO}
@@ -219,7 +213,6 @@ const Simulator: React.FC = () => {
   filterValuesRef.current = filterValues;
 
   const {
-    workOrderColors = {},
     availableComponents = [],
     componentAvailability = {},
     loading: isLoading,
@@ -228,11 +221,6 @@ const Simulator: React.FC = () => {
     setDefaultLineFilter
   } = UseSimulatorData();
 
-  // ✅ FIX: eliminado updateCounter y lastUpdated de las deps.
-  // lastUpdated causaba doble recálculo porque también disparaba el useEffect
-  // que incrementaba updateCounter, haciendo que fabricacionesFiltradas se
-  // recalculara dos veces por cada operación (una por lastUpdated, otra por updateCounter).
-  // fabricaciones ya recibe el array actualizado desde el Context, es suficiente.
   const fabricacionesFiltradas = useMemo(() => {
     if (fabricaciones.length === 0) return [];
     return filterFabricaciones(fabricaciones, filterValues, defaultLineFilter);
@@ -415,7 +403,6 @@ const Simulator: React.FC = () => {
             <div className="flex flex-col h-full overflow-hidden">
               <div className="flex-1 overflow-hidden">
                 <DetailPanel
-                  workOrderColors={workOrderColors}
                   availableComponents={availableComponents}
                   componentAvailability={componentAvailability}
                   handleReorderWO={handleReorderWO}

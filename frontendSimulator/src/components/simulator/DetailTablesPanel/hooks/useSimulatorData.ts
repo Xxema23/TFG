@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { IWorkOrderFrontend, IPalet } from '../../../../interfaces/ISimulatorData';
 import { IFabricacionConHoras } from '../../../../interfaces/IFabricacionConHoras';
 import {
-  getWorkOrderColors,
   updateWorkOrderDate,
   updateWorkOrderSequence,
   invalidateWorkOrderCache,
@@ -16,7 +15,6 @@ import { UsePerformanceMonitor } from './UsePerformanceMonitor';
 
 interface UseSimulatorDataResult {
   workOrders: IWorkOrderFrontend[];
-  workOrderColors: Record<string, string>;
   availableWOs: string[];
   loading: boolean;
   error: string | null;
@@ -111,9 +109,6 @@ export const UseSimulatorData = (): UseSimulatorDataResult => {
     refetch: refetchFabricaciones
   } = useFabricacionesConHoras();
 
-  const [workOrderColors, setWorkOrderColors] = useState<Record<string, string>>({});
-  const [colorsLoading, setColorsLoading] = useState(false);
-  const [colorsError, setColorsError] = useState<string | null>(null);
   const [cacheStats, setCacheStats] = useState<any>({});
   const [defaultLineFilter, setDefaultLineFilter] = useState<string | null>("L8");
   const [componentesMap, setComponentesMap] = useState<Record<string, string[]>>({});
@@ -124,9 +119,6 @@ export const UseSimulatorData = (): UseSimulatorDataResult => {
   const { getCached, invalidate, getStats } = UseSmartCache();
   const monitor = UsePerformanceMonitor();
 
-  // ✅ FIX: refs estables para getCached y getStats, evita que los useCallback
-  // de loadPalets/loadWorkOrderColors se recreen en cada render y rompan el
-  // useEffect que los llama (que tenía ambas funciones en sus deps).
   const getCachedRef = useRef(getCached);
   const getStatsRef  = useRef(getStats);
   getCachedRef.current = getCached;
@@ -145,22 +137,7 @@ export const UseSimulatorData = (): UseSimulatorDataResult => {
     } finally {
       setPaletsLoading(false);
     }
-  }, []); // ✅ Sin deps — usa refs internas
-
-  const loadWorkOrderColors = useCallback(async () => {
-    try {
-      setColorsLoading(true);
-      setColorsError(null);
-      const colorsData = await getCachedRef.current('workOrderColors', getWorkOrderColors, 5 * 60 * 1000);
-      setWorkOrderColors(colorsData);
-      setCacheStats(getStatsRef.current());
-    } catch (error) {
-      setColorsError(error instanceof Error ? error.message : 'Error cargando colores');
-      console.error('❌ Error cargando colores:', error);
-    } finally {
-      setColorsLoading(false);
-    }
-  }, []); // ✅ Sin deps — usa refs internas
+  }, []);
 
   const paletsMap = useMemo(() => {
     if (palets.length === 0) { globalPaletsMap = null; globalPaletsLength = 0; return new Map<string, IPalet>(); }
@@ -192,18 +169,13 @@ export const UseSimulatorData = (): UseSimulatorDataResult => {
     paletsMap
   ]);
 
-  // ✅ FIX: hasLoaded guard — solo carga colores y palets UNA VEZ cuando
-  // llegan las fabricaciones por primera vez. Antes tenía loadWorkOrderColors
-  // y loadPalets en las deps, lo que causaba que el efecto se re-ejecutara
-  // cada vez que esas funciones se recreaban.
   const hasLoadedAuxData = useRef(false);
   useEffect(() => {
     if (fabricacionesData.length > 0 && !hasLoadedAuxData.current) {
       hasLoadedAuxData.current = true;
-      loadWorkOrderColors();
       loadPalets();
     }
-  }, [fabricacionesData.length]); // ✅ Solo length, sin las funciones en deps
+  }, [fabricacionesData.length]);
 
   useEffect(() => {
     if (allWorkOrders.length > 0) {
@@ -221,10 +193,10 @@ export const UseSimulatorData = (): UseSimulatorDataResult => {
     }
   }, [allWorkOrders.length, defaultLineFilter]);
 
-  const loading = fabricacionesLoading || colorsLoading || paletsLoading;
+  const loading = fabricacionesLoading || paletsLoading;
   const error = fabricacionesError
     ? (fabricacionesError instanceof Error ? fabricacionesError.message : 'Error cargando fabricaciones')
-    : colorsError || paletsError;
+    : paletsError;
 
   const invalidateRef = useRef(invalidate);
   invalidateRef.current = invalidate;
@@ -235,7 +207,6 @@ export const UseSimulatorData = (): UseSimulatorDataResult => {
         const success = await updateWorkOrderDate(woId, newDate);
         if (success) {
           await refetchFabricaciones();
-          invalidateRef.current('workOrderColors');
           invalidateRef.current('palets');
           setCacheStats(getStatsRef.current());
           return true;
@@ -251,7 +222,6 @@ export const UseSimulatorData = (): UseSimulatorDataResult => {
         const success = await updateWorkOrderSequence(updates);
         if (success) {
           await refetchFabricaciones();
-          invalidateRef.current('workOrderColors');
           invalidateRef.current('palets');
           setCacheStats(getStatsRef.current());
           return true;
@@ -262,14 +232,13 @@ export const UseSimulatorData = (): UseSimulatorDataResult => {
   }, [monitor, refetchFabricaciones]);
 
   const refresh = useCallback(async () => {
-    await Promise.all([refetchFabricaciones(), loadWorkOrderColors(), loadPalets()]);
-  }, [refetchFabricaciones, loadWorkOrderColors, loadPalets]);
+    await Promise.all([refetchFabricaciones(), loadPalets()]);
+  }, [refetchFabricaciones, loadPalets]);
 
   const refreshCache = useCallback(() => { setCacheStats(getStatsRef.current()); }, []);
 
   const clearCache = useCallback(() => {
     invalidateWorkOrderCache();
-    invalidateRef.current('workOrderColors');
     invalidateRef.current('palets');
     setCacheStats(getStatsRef.current());
   }, []);
@@ -292,7 +261,6 @@ export const UseSimulatorData = (): UseSimulatorDataResult => {
 
   return {
     workOrders: allWorkOrders,
-    workOrderColors,
     availableWOs,
     loading,
     error,

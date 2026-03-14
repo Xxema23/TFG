@@ -217,14 +217,13 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
     dailyCapacities: capacitiesFromContext,
     workingDays: workingDaysFromContext,
     isLoading: capacityContextLoading,
-    refresh: refreshCapacities
+    refresh: refreshCapacities,
+    registerRecalculateCallback
   } = useCapacity();
 
   const { data, setData, setWorkingDays } = useGanttData('shared');
   const workingDays = workingDaysFromContext;
   const { 
-    isCapacityModalOpen, 
-    setIsCapacityModalOpen, 
     loadCapacitiesFromService, 
     handleSaveCapacity: originalHandleSaveCapacity,
     convertWeeklyToDaily
@@ -239,6 +238,8 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
   const lastSyncTimestampRef = useRef<number>(0);
   const isHandlingCapacityChangeRef = useRef(false);
   const hasLoadedCapacityRef = useRef(false);
+  const capacitiesFromContextRef = useRef<typeof capacitiesFromContext>([]);
+  const workingDaysFromContextRef = useRef<typeof workingDaysFromContext>([]);
 
   useEffect(() => {
     dataRef.current = data;
@@ -247,6 +248,14 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
   useEffect(() => {
     workingDaysRef.current = workingDays;
   }, [workingDays]);
+
+  useEffect(() => {
+    capacitiesFromContextRef.current = capacitiesFromContext;
+  }, [capacitiesFromContext]);
+
+  useEffect(() => {
+    workingDaysFromContextRef.current = workingDaysFromContext;
+  }, [workingDaysFromContext]);
 
   const {
     selectedWOs,
@@ -345,7 +354,6 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
       }
 
       const dropDate = normalizeDate(startingDay);
-      const dropDateObj = new Date(dropDate + 'T00:00:00');
       const draggedSet = new Set(draggedNumWOs);
 
       const wosToRedistribute = workOrders.filter(wo => {
@@ -469,14 +477,24 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
 
   const stableHandleWorkOrderDrop = useCallback(
     (info: DropInfo) => {
-      const targetWO = dataRef.current?.workOrders.find(wo => wo.NumWO === info.insertBeforeWO);
-      if (!targetWO) {
-        console.error('❌ Target no encontrado');
-        return;
-      }
+      // ── Determinar día y línea destino ────────────────────────────────────
+      let targetDay: string;
+      let targetLine: string = info.line;
 
-      const targetDay = targetWO.Fch_Objetivo.split('T')[0];
-      const targetLine = info.line;
+      if (info.insertBeforeWO === undefined) {
+        if (!info.day) {
+          console.error('❌ Drop sin target y sin día');
+          return;
+        }
+        targetDay = info.day;
+      } else {
+        const targetWO = dataRef.current?.workOrders.find(wo => wo.NumWO === info.insertBeforeWO);
+        if (!targetWO) {
+          console.error('❌ Target no encontrado');
+          return;
+        }
+        targetDay = normalizeDate(targetWO.Fch_Objetivo);
+      }
 
       const draggedWOs = info.draggedItems
         .map(numWO => dataRef.current?.workOrders.find(wo => wo.NumWO === numWO))
@@ -495,13 +513,16 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
 
       const existingInTarget = dataRef.current!.workOrders
         .filter(wo => 
-          wo.Fch_Objetivo.split('T')[0] === targetDay &&
+          normalizeDate(wo.Fch_Objetivo) === targetDay &&
           wo.Linea === targetLine &&
           !info.draggedItems.includes(wo.NumWO)
         )
         .sort((a, b) => a.Secuencia - b.Secuencia);
 
-      const targetIdx = existingInTarget.findIndex(wo => wo.NumWO === info.insertBeforeWO);
+      const targetIdx = info.insertBeforeWO === undefined
+        ? existingInTarget.length
+        : existingInTarget.findIndex(wo => wo.NumWO === info.insertBeforeWO);
+
       if (targetIdx === -1) {
         console.error('❌ Target no encontrado en WOs del día');
         return;
@@ -517,7 +538,7 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
 
       const originalLocations = new Set<string>();
       draggedWOs.forEach(wo => {
-        const originalDay = wo!.Fch_Objetivo.split('T')[0];
+        const originalDay = normalizeDate(wo!.Fch_Objetivo);
         const originalLine = wo!.Linea;
         if (originalDay !== targetDay || originalLine !== targetLine) {
           originalLocations.add(`${originalDay}|${originalLine}`);
@@ -526,7 +547,7 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
 
       let allWOs = dataRef.current!.workOrders.filter(wo => {
         if (info.draggedItems.includes(wo.NumWO)) return false;
-        if (wo.Fch_Objetivo.split('T')[0] === targetDay && wo.Linea === targetLine) return false;
+        if (normalizeDate(wo.Fch_Objetivo) === targetDay && wo.Linea === targetLine) return false;
         return true;
       });
 
@@ -535,7 +556,7 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
       originalLocations.forEach(locationKey => {
         const [day, line] = locationKey.split('|');
         const wosInOriginal = allWOs
-          .filter(wo => wo.Fch_Objetivo.split('T')[0] === day && wo.Linea === line)
+          .filter(wo => normalizeDate(wo.Fch_Objetivo) === day && wo.Linea === line)
           .sort((a, b) => a.Secuencia - b.Secuencia);
         
         const reseq = wosInOriginal.map((wo, i) => ({ ...wo, Secuencia: i + 1 }));
@@ -545,7 +566,6 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
       let finalWOs = allWOs;
 
       if (dataRef.current?.capacity && dataRef.current.capacity.length > 0 && workingDaysRef.current.length > 0) {
-        const normalizeDate = (date: string) => date.replace(' ', 'T').split('T')[0];
         const dropDate = normalizeDate(targetDay);
         const draggedSet = new Set(info.draggedItems);
         
@@ -569,18 +589,23 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
             return normalizeDate(wo.Fch_Objetivo) >= minAffectedDay;
           })
           .sort((a, b) => {
-            const dateCompare = new Date(normalizeDate(a.Fch_Objetivo)).getTime() - 
-                               new Date(normalizeDate(b.Fch_Objetivo)).getTime();
+            const dateCompare =
+              new Date(normalizeDate(a.Fch_Objetivo)).getTime() -
+              new Date(normalizeDate(b.Fch_Objetivo)).getTime();
             if (dateCompare !== 0) return dateCompare;
-            return a.Secuencia - b.Secuencia;
+              return a.Secuencia - b.Secuencia;
           });
         
         const capacityByDay = new Map<string, number>();
         const dayUsage = new Map<string, number>();
         
         workingDaysRef.current.forEach(day => {
-          const dayCapacity = dataRef.current!.capacity.find(c => c.date === day && c.line === targetLine);
-          const fallback = dataRef.current!.capacity.find(c => c.line === targetLine)?.capacity || 8;
+          const dayCapacity = dataRef.current!.capacity.find(
+            c => c.date === day && c.line === targetLine
+          );
+          const fallback = dataRef.current!.capacity.find(
+            c => c.line === targetLine
+          )?.capacity || 8;
           capacityByDay.set(day, dayCapacity?.capacity || fallback);
           dayUsage.set(day, 0);
         });
@@ -602,10 +627,14 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
           let remainingHours = woHours;
           let assignedToDay: string | null = null;
           
+          // Arrastradas arrancan siempre desde dropDate.
+          // Existentes arrancan desde su fecha actual (ya están en el día correcto
+          // después de la inserción visual; solo se empujan si no caben).
           const originalWODate = normalizeDate(wo.Fch_Objetivo);
           const startDay = draggedSet.has(wo.NumWO) ? dropDate : originalWODate;
           
           let dayIndex = workingDaysRef.current.findIndex(d => d === startDay);
+          if (dayIndex === -1) dayIndex = 0;
           
           while (dayIndex < workingDaysRef.current.length && remainingHours > 0) {
             const currentDay = workingDaysRef.current[dayIndex];
@@ -642,6 +671,7 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
         });
         
         const redistributedWithCorrectSeq: typeof redistributed = [];
+
         redistributedByDay.forEach(wosInDay => {
           wosInDay.forEach((wo, dayIndex) => {
             redistributedWithCorrectSeq.push({ ...wo, Secuencia: dayIndex + 1 });
@@ -753,6 +783,62 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
   );
 
   useEffect(() => {
+    registerRecalculateCallback(async (capacities, deletions) => {
+      hasLoadedCapacityRef.current = false;
+      isHandlingCapacityChangeRef.current = true;
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const dailyCapacities = capacitiesFromContextRef.current;
+      const extendedWorkingDays = workingDaysFromContextRef.current;
+
+      if (!dailyCapacities.length) {
+        console.error('❌ No hay capacidades disponibles para recalcular');
+        isHandlingCapacityChangeRef.current = false;
+        hasLoadedCapacityRef.current = true;
+        setIsCapacityReady(true);
+        return;
+      }
+
+      if (dataRef.current) {
+        dataRef.current = {
+          ...dataRef.current,
+          capacity: [...dailyCapacities]
+        };
+      }
+
+      setData(prev => {
+        if (!prev) return prev;
+        return { ...prev, capacity: [...dailyCapacities] };
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      if (dataRef.current?.workOrders?.length && dataRef.current.capacity?.length > 0) {
+        const recalculatedWOs = recalculateAffectedWorkOrders(
+          dataRef.current.workOrders,
+          dataRef.current.capacity,
+          extendedWorkingDays,
+          capacities
+        );
+
+        if (recalculatedWOs.length === dataRef.current.workOrders.length) {
+          onGanttOrdersChanged(recalculatedWOs, true);
+        } else {
+          console.error('❌ Error en recálculo: número de WOs no coincide');
+        }
+      }
+
+      hasLoadedCapacityRef.current = true;
+      setIsCapacityReady(true);
+
+      setTimeout(() => {
+        isHandlingCapacityChangeRef.current = false;
+      }, 300);
+    });
+  }, [registerRecalculateCallback]);
+
+  useEffect(() => {
     DropMonitor.registerDropHandler(stableHandleWorkOrderDrop);
     return () => {
       DropMonitor.unregisterDropHandler();
@@ -783,8 +869,6 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
   return {
     data,
     workingDays,
-    isCapacityModalOpen,
-    setIsCapacityModalOpen,
     handleSaveCapacity,
     zoomLevel,
     handleZoomIn,
