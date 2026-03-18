@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useFabricacionesContext } from "../../../contexts/FabricacionesContext";
 import { useGanttData } from "./UseGanttData";
 import { useCapacityHandlers } from "./UseCapacityHandlers";
 import { useWorkOrderHandlers } from "./UseWorkOrderHandlers";
@@ -10,8 +9,6 @@ import DropMonitor from "../DropMonitor";
 import { useCapacity } from '../../../contexts/CapacityContext';
 import { useFabricacionesData, useFabricacionesActions } from '../../../contexts/FabricacionesContext';
 
-const DEBUG_MODE = false;
-const ENABLE_CAPACITY_LOGS = false;
 
 export const DEFAULT_INITIAL_CAPACITY = 1000000;
 
@@ -202,30 +199,23 @@ export const recalculateAffectedWorkOrders = (
 export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
   const { 
     fabricaciones: fabricacionesFromContext,
-    hasPendingChanges: contextHasPendingChanges,
     lastUpdated
   } = useFabricacionesData();
 
   const {
     onGanttOrdersChanged,
-    onGanttOrderSaved,
-    setHasPendingChanges,
-    refetch
   } = useFabricacionesActions();
 
   const { 
     dailyCapacities: capacitiesFromContext,
     workingDays: workingDaysFromContext,
-    isLoading: capacityContextLoading,
-    refresh: refreshCapacities,
     registerRecalculateCallback
   } = useCapacity();
 
-  const { data, setData, setWorkingDays } = useGanttData('shared');
+  const { data, setData } = useGanttData('shared');
   const workingDays = workingDaysFromContext;
   const { 
     loadCapacitiesFromService, 
-    handleSaveCapacity: originalHandleSaveCapacity,
     convertWeeklyToDaily
   } = useCapacityHandlers(workingDays, setData, data);
   
@@ -265,12 +255,8 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
     pendingChanges,
     hasUnsavedChanges,
     isSaving,
-    saveChanges: originalSaveChanges,
-    discardChanges: originalDiscardChanges,
-    handleWorkOrderDrop: originalHandleWorkOrderDrop,
     getWorkOrderCurrentState,
     applyCapacityChanges,
-    reorderSequencesInDay
   } = useWorkOrderHandlers(data, setData, workingDays, convertWeeklyToDaily, dataRef);
 
   useEffect(() => {
@@ -342,138 +328,6 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
     setZoomLevel((prev) => Math.max(prev / 1.2, 0.5));
   }, []);
 
-  const redistributeWithCapacity = useCallback(
-    (
-      workOrders: IFabricacionConHoras[],
-      targetLine: string,
-      startingDay: string,
-      draggedNumWOs: string[]
-    ): IFabricacionConHoras[] => {
-      if (!dataRef.current?.capacity || dataRef.current.capacity.length === 0) {
-        return workOrders;
-      }
-
-      const dropDate = normalizeDate(startingDay);
-      const draggedSet = new Set(draggedNumWOs);
-
-      const wosToRedistribute = workOrders.filter(wo => {
-        return draggedSet.has(wo.NumWO);
-      }).sort((a, b) => {
-        const dateCompare = new Date(normalizeDate(a.Fch_Objetivo) + 'T00:00:00').getTime() - 
-                           new Date(normalizeDate(b.Fch_Objetivo) + 'T00:00:00').getTime();
-        if (dateCompare !== 0) return dateCompare;
-        return a.Secuencia - b.Secuencia;
-      });
-
-      const wosToKeepIntact = workOrders.filter(wo => {
-        return !draggedSet.has(wo.NumWO);
-      });
-
-      const capacityByDay = new Map<string, number>();
-      const dayUsage = new Map<string, number>();
-      
-      workingDaysRef.current.forEach(day => {
-        const dayCapacity = dataRef.current!.capacity.find(
-          c => c.date === day && (c.line === targetLine || c.line === "*")
-        );
-        capacityByDay.set(day, dayCapacity?.capacity || DEFAULT_INITIAL_CAPACITY);
-        dayUsage.set(day, 0);
-      });
-
-      wosToKeepIntact.forEach(wo => {
-        if (wo.Linea !== targetLine) return;
-        
-        const woDate = normalizeDate(wo.Fch_Objetivo);
-        if (workingDaysRef.current.includes(woDate)) {
-          const woHours = parseFloat(wo.horas_totales_de_la_wo) || 0;
-          const currentUsage = dayUsage.get(woDate) || 0;
-          dayUsage.set(woDate, currentUsage + woHours);
-        }
-      });
-
-      const redistributed: typeof wosToRedistribute = [];
-      const pushedWOs: typeof wosToRedistribute = [];
-
-      wosToRedistribute.forEach((wo, idx) => {
-        const woHours = parseFloat(wo.horas_totales_de_la_wo) || 0;
-        let remainingHours = woHours;
-        let assignedToDay: string | null = null;
-        
-        let dayIndex = workingDaysRef.current.findIndex(d => d === dropDate);
-        
-        while (dayIndex < workingDaysRef.current.length && remainingHours > 0) {
-          const currentDay = workingDaysRef.current[dayIndex];
-          const dayCapacity = capacityByDay.get(currentDay) || DEFAULT_INITIAL_CAPACITY;
-          const dayUsed = dayUsage.get(currentDay) || 0;
-          const availableCapacity = dayCapacity - dayUsed;
-          
-          if (availableCapacity > 0.01) {
-            if (!assignedToDay) {
-              assignedToDay = currentDay;
-            }
-            
-            const hoursToUse = Math.min(remainingHours, availableCapacity);
-            dayUsage.set(currentDay, dayUsed + hoursToUse);
-            remainingHours -= hoursToUse;
-            
-            if (remainingHours <= 0.01) {
-              break;
-            }
-          }
-          
-          dayIndex++;
-        }
-        
-        if (assignedToDay) {
-          const newWO = {
-            ...wo,
-            Fch_Objetivo: assignedToDay,
-            Secuencia: idx + 1
-          };
-          
-          redistributed.push(newWO);
-          
-          if (assignedToDay !== dropDate) {
-            pushedWOs.push(newWO);
-          }
-        } else {
-          redistributed.push({
-            ...wo,
-            Secuencia: idx + 1
-          });
-          console.warn(`⚠️ WO ${wo.NumWO} no cabía en ningún día disponible`);
-        }
-      });
-
-      const redistributedByDay = new Map<string, typeof redistributed>();
-      redistributed.forEach(wo => {
-        const day = normalizeDate(wo.Fch_Objetivo);
-        if (!redistributedByDay.has(day)) {
-          redistributedByDay.set(day, []);
-        }
-        redistributedByDay.get(day)!.push(wo);
-      });
-
-      const redistributedWithCorrectSeq: typeof redistributed = [];
-      redistributedByDay.forEach((wosInDay) => {
-        wosInDay.forEach((wo, dayIndex) => {
-          redistributedWithCorrectSeq.push({
-            ...wo,
-            Secuencia: dayIndex + 1
-          });
-        });
-      });
-
-      const redistributedNumWOs = new Set(redistributedWithCorrectSeq.map(w => w.NumWO));
-      const finalWOs = [
-        ...wosToKeepIntact.filter(wo => !redistributedNumWOs.has(wo.NumWO)),
-        ...redistributedWithCorrectSeq
-      ];
-
-      return finalWOs;
-    },
-    []
-  );
 
   const stableHandleWorkOrderDrop = useCallback(
     (info: DropInfo) => {
@@ -705,83 +559,6 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
     [onGanttOrdersChanged, fabricacionesFromContext]
   );
 
-  const handleSaveCapacity = useCallback(
-    async (
-      capacities: CapacityData[], 
-      deletions: { line: string; week: number; year: number }[] = []
-    ): Promise<void> => {
-      try {
-        isHandlingCapacityChangeRef.current = true;
-        hasLoadedCapacityRef.current = false;
-        
-        const result = await originalHandleSaveCapacity(capacities, deletions);
-        
-        if (!result.success) {
-          isHandlingCapacityChangeRef.current = false;
-          return;
-        }
-        
-        try {
-          await refetch();
-          await refreshCapacities();
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
-          const dailyCapacities = capacitiesFromContext;
-          const extendedWorkingDays = workingDaysFromContext;
-          
-          if (dataRef.current) {
-            dataRef.current = {
-              ...dataRef.current,
-              capacity: [...dailyCapacities]
-            };
-          }
-          
-          setData(prev => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              capacity: [...dailyCapacities]
-            };
-          });
-          
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          if (dataRef.current && dataRef.current.workOrders && dataRef.current.capacity && dataRef.current.capacity.length > 0) {
-            const recalculatedWOs = recalculateAffectedWorkOrders(
-              dataRef.current.workOrders,
-              dataRef.current.capacity,
-              extendedWorkingDays,
-              capacities
-            );
-            
-            if (recalculatedWOs.length === dataRef.current.workOrders.length) {
-              onGanttOrdersChanged(recalculatedWOs, true);
-            } else {
-              console.error('❌ Error en recálculo: número de WOs no coincide');
-            }
-          } else {
-            console.error('❌ dataRef.current sin datos para recalcular');
-          }
-          
-          setTimeout(() => {
-            isHandlingCapacityChangeRef.current = false;
-          }, 500);
-          
-        } catch (refetchError) {
-          console.error('❌ Error al recargar datos:', refetchError);
-          isHandlingCapacityChangeRef.current = false;
-          alert('⚠️ Capacity guardada, pero hubo un error al recargar. Por favor, refresca la página.');
-        }
-        
-      } catch (error) {
-        console.error('❌ Error guardando capacidad:', error);
-        isHandlingCapacityChangeRef.current = false;
-        throw error;
-      }
-    },
-    [originalHandleSaveCapacity, refetch, onGanttOrdersChanged, setData]
-  );
-
   useEffect(() => {
     registerRecalculateCallback(async (capacities, deletions) => {
       hasLoadedCapacityRef.current = false;
@@ -869,7 +646,6 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
   return {
     data,
     workingDays,
-    handleSaveCapacity,
     zoomLevel,
     handleZoomIn,
     handleZoomOut,
