@@ -216,7 +216,7 @@ const ControlButtons: React.FC<ControlButtonsProps> = memo(({
               💾 Guardar Cambios ({pendingChanges.size})
             </>
           ) : (
-            'Otros'
+            'Aún no hay cambios'
           )}
         </button>
       </div>
@@ -229,10 +229,7 @@ const ControlButtons: React.FC<ControlButtonsProps> = memo(({
       />
     </>
   );
-}, (prevProps, nextProps) => 
-  prevProps.scenarioId === nextProps.scenarioId &&
-  prevProps.currentView === nextProps.currentView
-);
+});
 
 ControlButtons.displayName = 'ControlButtons';
 

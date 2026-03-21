@@ -560,13 +560,15 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
   );
 
   useEffect(() => {
-    registerRecalculateCallback(async (capacities, deletions) => {
+    registerRecalculateCallback(async (capacities, deletions, freshDailyCapacities) => {
       hasLoadedCapacityRef.current = false;
       isHandlingCapacityChangeRef.current = true;
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      const dailyCapacities = capacitiesFromContextRef.current;
+      const dailyCapacities = freshDailyCapacities?.length
+        ? freshDailyCapacities
+        : capacitiesFromContextRef.current;
       const extendedWorkingDays = workingDaysFromContextRef.current;
 
       if (!dailyCapacities.length) {
@@ -588,8 +590,6 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
         if (!prev) return prev;
         return { ...prev, capacity: [...dailyCapacities] };
       });
-
-      await new Promise(resolve => setTimeout(resolve, 300));
 
       if (dataRef.current?.workOrders?.length && dataRef.current.capacity?.length > 0) {
         const recalculatedWOs = recalculateAffectedWorkOrders(

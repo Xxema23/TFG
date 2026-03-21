@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useUniqueLines } from '../../hooks/UseUniqueLines';
 import { CapacityData } from '../../interfaces/Capacity';
-import { getCapacities } from '../../services/capacityService'; // ⬅️ Minúscula
+import { getCapacities } from '../../services/capacityService';
 
 interface CapacityModalProps {
   isOpen?: boolean;
@@ -122,7 +122,7 @@ const CapacityModal: React.FC<CapacityModalProps> = ({
     if (isOpen) {
       loadExistingCapacities();
     }
-  }, [isOpen, selectedYear, loadExistingCapacities]);
+  }, [isOpen, selectedYear]);
   
   useEffect(() => {
     if (isOpen) {
@@ -292,8 +292,13 @@ const CapacityModal: React.FC<CapacityModalProps> = ({
     return { capacities, deletions };
   };
 
+  const isSubmittingRef = useRef(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     
     if (editingCell) {
       const [line, weekStr] = editingCell.split('-');
@@ -329,13 +334,13 @@ const CapacityModal: React.FC<CapacityModalProps> = ({
     
     try {
       const { capacities, deletions } = prepareCapacityDataForSave();
-      
       await onSave(capacities, deletions);
     } catch (error) {
       console.error('Error al guardar capacidades:', error);
       alert('Error al guardar las capacidades. Inténtalo de nuevo.');
     } finally {
       setIsSubmitting(false);
+      isSubmittingRef.current = false;
     }
   };
 
@@ -362,7 +367,7 @@ const CapacityModal: React.FC<CapacityModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[2000] overflow-auto">
       <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-6xl mx-4 my-8">
         <div className="flex justify-between items-center mb-4">
           <div>

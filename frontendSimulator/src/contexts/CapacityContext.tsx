@@ -11,7 +11,8 @@ import {
 // Tipo del callback de recálculo que registra UseGanttHooks
 type RecalculateCallback = (
   capacities: CapacityData[],
-  deletions: { line: string; week: number; year: number }[]
+  deletions: { line: string; week: number; year: number }[],
+  freshDailyCapacities?: DailyCapacity[]
 ) => Promise<void>;
 
 interface CapacityContextType {
@@ -157,7 +158,7 @@ export const CapacityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // 4. Delegar recálculo de WOs a UseGanttHooks (si está registrado)
       if (recalculateCallbackRef.current) {
-        await recalculateCallbackRef.current(capacities, deletions);
+        await recalculateCallbackRef.current(capacities, deletions, capacitiesRef.current);
       }
     } catch (error) {
       console.error('❌ [CapacityContext] Error en handleSaveCapacity:', error);
