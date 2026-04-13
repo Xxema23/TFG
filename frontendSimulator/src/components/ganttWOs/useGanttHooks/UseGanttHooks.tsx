@@ -199,8 +199,20 @@ export const recalculateAffectedWorkOrders = (
 export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
   const { 
     fabricaciones: fabricacionesFromContext,
-    lastUpdated
+    lastUpdated,
+    activeScenarioId
   } = useFabricacionesData();
+
+  const activeScenarioIdRef = useRef<number>(activeScenarioId);
+  useEffect(() => {
+    activeScenarioIdRef.current = activeScenarioId;
+  }, [activeScenarioId]);
+
+  useEffect(() => {
+    hasLoadedCapacityRef.current = false;
+    setIsCapacityReady(false);
+    lastSyncTimestampRef.current = 0;
+  }, [activeScenarioId]);
 
   const {
     onGanttOrdersChanged,
@@ -212,7 +224,8 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
     registerRecalculateCallback
   } = useCapacity();
 
-  const { data, setData } = useGanttData('shared');
+  const { data, setData } = useGanttData(`shared-${activeScenarioId}`);
+
   const workingDays = workingDaysFromContext;
   const { 
     loadCapacitiesFromService, 
@@ -264,6 +277,10 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
       return;
     }
 
+    if (data === null) {
+      return;
+    }
+
     const dataSource = filteredWorkOrders && filteredWorkOrders.length > 0 
       ? filteredWorkOrders 
       : fabricacionesFromContext;
@@ -309,7 +326,8 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
     workingDays.length,
     setData,
     lastUpdated,
-    filteredWorkOrders
+    filteredWorkOrders,
+    data
   ]);
 
   const saveChanges = useCallback(async (): Promise<void> => {
@@ -560,7 +578,10 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
   );
 
   useEffect(() => {
-    registerRecalculateCallback(async (capacities, deletions, freshDailyCapacities) => {
+    registerRecalculateCallback(async (capacities, deletions, freshDailyCapacities, scenarioId) => {
+      if (scenarioId !== undefined && scenarioId !== activeScenarioIdRef.current) {
+        return;
+      }
       hasLoadedCapacityRef.current = false;
       isHandlingCapacityChangeRef.current = true;
 
@@ -641,7 +662,7 @@ export const useGanttHooks = (filteredWorkOrders?: IFabricacionConHoras[]) => {
       
       setIsCapacityReady(true);
     }
-  }, [capacitiesFromContext.length, data?.workOrders?.length, setData]);
+  }, [capacitiesFromContext.length, data?.workOrders?.length, setData, isCapacityReady]);
 
   return {
     data,

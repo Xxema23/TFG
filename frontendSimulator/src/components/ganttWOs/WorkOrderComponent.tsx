@@ -107,8 +107,10 @@ const WorkOrderComponent: React.FC<WorkOrderComponentProps> = ({
         color: getTextColor(),
         border: isSelected ? "2px solid #1e40af" : "1px solid #059669",
         borderRadius: "4px",
-        padding: "4px 8px",
-        fontSize: `${12 * zoomLevel}px`,
+        padding: "0px 8px",
+        display: "flex",
+        alignItems: "center",
+        fontSize: "13px",
         cursor: getCursor(),
         userSelect: "none",
         zIndex: isDragging ? 1000 : isSelected ? 100 : 10,
@@ -133,6 +135,7 @@ const WorkOrderComponent: React.FC<WorkOrderComponentProps> = ({
           overflow: "hidden",
           textOverflow: "ellipsis",
           fontWeight: isSelected ? "bold" : "normal",
+          width: "100%",
         }}
       >
         {workOrder.NumWO}

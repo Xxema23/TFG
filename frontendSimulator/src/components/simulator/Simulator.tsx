@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { useFabricacionesContext } from '../../contexts/FabricacionesContext';
+import { useFabricacionesContext, useFabricacionesActions } from '../../contexts/FabricacionesContext';
 import ScenarioTabs from './ScenarioTabs';
 import ControlButtons from './ControlButtons';
 import GanttWOs from '../ganttWOs/GanttWOs';
@@ -171,7 +171,13 @@ const DetailPanel = React.memo(({
 const Simulator: React.FC = () => {
   const { fabricaciones, lastUpdated } = useFabricacionesContext();
 
-  const [activeScenario, setActiveScenario] = useState<number | null>(1);
+  const [activeScenario, setActiveScenarioLocal] = useState<number | null>(1);
+  const { setActiveScenario } = useFabricacionesActions();
+
+  const handleScenarioChange = useCallback((scenarioId: number | null) => {
+    setActiveScenarioLocal(scenarioId);
+    if (scenarioId) setActiveScenario(scenarioId);
+  }, [setActiveScenario]);
   const [selectedWorkOrderIds, setSelectedWorkOrderIds] = useState<string[]>([]);
 
   const STORAGE_KEY = 'simulator_last_selected_line';
@@ -366,7 +372,7 @@ const Simulator: React.FC = () => {
   return (
     <div className="w-full h-screen flex flex-col overflow-hidden">
       <div className="flex justify-between items-center p-2 bg-white border-b flex-shrink-0">
-        <ScenarioTabs selectedScenario={activeScenario} onScenarioChange={setActiveScenario} />
+        <ScenarioTabs selectedScenario={activeScenario} onScenarioChange={handleScenarioChange} />
         <div className="flex items-center space-x-2">
           <ControlButtons scenarioId={activeScenario} currentView="details" onViewChange={() => {}} />
         </div>

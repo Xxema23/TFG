@@ -1,19 +1,24 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { DailyCapacity, BaseCapacity, CapacityData } from '../interfaces/Capacity';
-import { 
-  getBaseCapacities, 
-  getCapacities, 
+import { DailyCapacity, CapacityData } from '../interfaces/Capacity';
+import {
+  getBaseCapacities,
+  getCapacities,
   buildDailyCapacities,
   saveCapacities,
   deleteCapacities
 } from '../services/capacityService';
 
-// Tipo del callback de recálculo que registra UseGanttHooks
 type RecalculateCallback = (
   capacities: CapacityData[],
   deletions: { line: string; week: number; year: number }[],
-  freshDailyCapacities?: DailyCapacity[]
+  freshDailyCapacities?: DailyCapacity[],
+  scenarioId?: number
 ) => Promise<void>;
+
+interface ScenarioCapacityState {
+  dailyCapacities: DailyCapacity[];
+  initialized: boolean;
+}
 
 interface CapacityContextType {
   dailyCapacities: DailyCapacity[];
@@ -21,7 +26,6 @@ interface CapacityContextType {
   error: Error | null;
   refresh: () => Promise<void>;
   workingDays: string[];
-  // ── Nuevo: modal y handler unificado ──────────────────────────────────────
   isCapacityModalOpen: boolean;
   openCapacityModal: () => void;
   closeCapacityModal: () => void;
@@ -29,145 +33,178 @@ interface CapacityContextType {
     capacities: CapacityData[],
     deletions?: { line: string; week: number; year: number }[]
   ) => Promise<void>;
-  /** UseGanttHooks llama esto al montarse para registrar su lógica de recálculo */
   registerRecalculateCallback: (cb: RecalculateCallback) => void;
 }
 
 const CapacityContext = createContext<CapacityContextType | null>(null);
 
-export const CapacityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [dailyCapacities, setDailyCapacities] = useState<DailyCapacity[]>([]);
+export const CapacityProvider: React.FC<{
+  children: React.ReactNode;
+  activeScenarioId: number;
+}> = ({ children, activeScenarioId }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [workingDays, setWorkingDays] = useState<string[]>([]);
   const [isCapacityModalOpen, setIsCapacityModalOpen] = useState(false);
+  const [activeCapacities, setActiveCapacities] = useState<DailyCapacity[]>([]);
 
-  const capacitiesRef = useRef<DailyCapacity[]>([]);
   const isLoadingRef = useRef(false);
-  const yearCapacitiesCache = useRef<Map<number, CapacityData[]>>(new Map());
-  // Callback registrado por UseGanttHooks para recalcular WOs tras guardar
+  const scenarioCapacitiesRef = useRef<Map<number, ScenarioCapacityState>>(new Map([
+    [1, { dailyCapacities: [], initialized: false }],
+    [2, { dailyCapacities: [], initialized: false }],
+    [3, { dailyCapacities: [], initialized: false }],
+  ]));
+  const yearCapacitiesCacheRef = useRef<Map<string, CapacityData[]>>(new Map());
   const recalculateCallbackRef = useRef<RecalculateCallback | null>(null);
+  const workingDaysRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    workingDaysRef.current = workingDays;
+  }, [workingDays]);
 
   // ── Días laborables ────────────────────────────────────────────────────────
   useEffect(() => {
-    const calculateWorkingDays = () => {
-      const today = new Date();
-      const allWorkingDays: string[] = [];
-      const startDate = new Date(today);
-      startDate.setDate(today.getDate() - 7);
-      const endDate = new Date(today);
-      endDate.setDate(today.getDate() + 120);
+    const today = new Date();
+    const allWorkingDays: string[] = [];
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() - 7);
+    const endDate = new Date(today);
+    endDate.setDate(today.getDate() + 120);
 
-      let currentDate = new Date(startDate);
-      while (currentDate <= endDate) {
-        const dayOfWeek = currentDate.getDay();
-        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-          allWorkingDays.push(currentDate.toISOString().split('T')[0]);
-        }
-        currentDate.setDate(currentDate.getDate() + 1);
+    let currentDate = new Date(startDate);
+    while (currentDate <= endDate) {
+      if (currentDate.getDay() !== 0 && currentDate.getDay() !== 6) {
+        allWorkingDays.push(currentDate.toISOString().split('T')[0]);
       }
-      return allWorkingDays;
-    };
-    setWorkingDays(calculateWorkingDays());
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    setWorkingDays(allWorkingDays);
   }, []);
 
-  // ── Carga de capacidades ───────────────────────────────────────────────────
-  const loadCapacities = useCallback(async () => {
-    if (isLoadingRef.current) return;
+  // ── Carga de capacidades para un escenario ────────────────────────────────
+  const loadCapacitiesForScenario = useCallback(async (scenarioId: number): Promise<DailyCapacity[]> => {
+    if (!scenarioId || typeof scenarioId !== 'number') return [];
+    if (isLoadingRef.current) return [];
     try {
       isLoadingRef.current = true;
       setIsLoading(true);
       setError(null);
 
-      const baseCapacities = await getBaseCapacities(1);
+      let baseCapacities = await getBaseCapacities(scenarioId);
+      if (baseCapacities.length === 0 && scenarioId !== 1) {
+        baseCapacities = await getBaseCapacities(1);
+      }
+
       const currentYear = new Date().getFullYear();
       const years = [currentYear - 1, currentYear, currentYear + 1];
       const allWeeklyCapacities: CapacityData[] = [];
 
       for (const year of years) {
-        if (yearCapacitiesCache.current.has(year)) {
-          allWeeklyCapacities.push(...yearCapacitiesCache.current.get(year)!);
+        const cacheKey = `${scenarioId}-${year}`;
+        if (yearCapacitiesCacheRef.current.has(cacheKey)) {
+          allWeeklyCapacities.push(...yearCapacitiesCacheRef.current.get(cacheKey)!);
         } else {
-          const yearCaps = await getCapacities(1, year);
-          yearCapacitiesCache.current.set(year, yearCaps);
+          const yearCaps = await getCapacities(scenarioId, year);
+          yearCapacitiesCacheRef.current.set(cacheKey, yearCaps);
           allWeeklyCapacities.push(...yearCaps);
         }
       }
 
-      const daily = buildDailyCapacities(baseCapacities, allWeeklyCapacities, workingDays);
-      setDailyCapacities(daily);
-      capacitiesRef.current = daily;
+      const days = workingDaysRef.current.length > 0 ? workingDaysRef.current : workingDays;
+      const daily = buildDailyCapacities(baseCapacities, allWeeklyCapacities, days);
+      scenarioCapacitiesRef.current.set(scenarioId, {
+        dailyCapacities: daily,
+        initialized: true,
+      });
+
+      return daily;
     } catch (err) {
       const e = err instanceof Error ? err : new Error('Error cargando capacidades');
       setError(e);
-      console.error('❌ [CapacityContext] Error cargando capacidades:', e);
+      console.error('❌ [CapacityContext] Error:', e);
+      return [];
     } finally {
       setIsLoading(false);
       isLoadingRef.current = false;
     }
   }, [workingDays]);
 
+  // ── Cuando cambia el escenario activo ─────────────────────────────────────
   useEffect(() => {
-    if (workingDays.length > 0 && dailyCapacities.length === 0) {
-      loadCapacities();
+    if (workingDays.length === 0) return;
+    if (!activeScenarioId || typeof activeScenarioId !== 'number') return;
+
+    const state = scenarioCapacitiesRef.current.get(activeScenarioId);
+    if (state?.initialized) {
+      setActiveCapacities(state.dailyCapacities);
+    } else {
+      loadCapacitiesForScenario(activeScenarioId).then(daily => {
+        setActiveCapacities(daily);
+      });
     }
-  }, [workingDays.length]);
+  }, [activeScenarioId, workingDays.length]);
 
   const refresh = useCallback(async () => {
-    yearCapacitiesCache.current.clear();
-    await loadCapacities();
-  }, [loadCapacities]);
+    // Limpia cache del escenario activo y recarga
+    const currentYear = new Date().getFullYear();
+    [currentYear - 1, currentYear, currentYear + 1].forEach(year => {
+      yearCapacitiesCacheRef.current.delete(`${activeScenarioId}-${year}`);
+    });
+    scenarioCapacitiesRef.current.set(activeScenarioId, { dailyCapacities: [], initialized: false });
+    const daily = await loadCapacitiesForScenario(activeScenarioId);
+    setActiveCapacities(daily);
+  }, [activeScenarioId, loadCapacitiesForScenario]);
 
-  // ── Modal ──────────────────────────────────────────────────────────────────
   const openCapacityModal = useCallback(() => setIsCapacityModalOpen(true), []);
   const closeCapacityModal = useCallback(() => setIsCapacityModalOpen(false), []);
 
-  // ── Registro del callback de recálculo (lo llama UseGanttHooks) ───────────
   const registerRecalculateCallback = useCallback((cb: RecalculateCallback) => {
     recalculateCallbackRef.current = cb;
   }, []);
 
-  // ── Handler unificado (el que usaban el engranaje del Gantt y el modal) ───
   const handleSaveCapacity = useCallback(async (
     capacities: CapacityData[],
     deletions: { line: string; week: number; year: number }[] = []
   ): Promise<void> => {
     try {
-      // 1. Guardar en BD
       if (capacities.length > 0) {
-        const result = await saveCapacities(1, capacities);
+        const result = await saveCapacities(activeScenarioId, capacities);
         if (!result.success) {
           console.error('❌ Error guardando capacidades');
           return;
         }
       }
       if (deletions.length > 0) {
-        const result = await deleteCapacities(1, deletions);
+        const result = await deleteCapacities(activeScenarioId, deletions);
         if (!result.success) {
           console.error('❌ Error eliminando capacidades');
           return;
         }
       }
 
-      // 2. Recargar capacidades en el contexto
-      yearCapacitiesCache.current.clear();
-      await loadCapacities();
+      // Limpiar cache y recargar para el escenario activo
+      const currentYear = new Date().getFullYear();
+      [currentYear - 1, currentYear, currentYear + 1].forEach(year => {
+        yearCapacitiesCacheRef.current.delete(`${activeScenarioId}-${year}`);
+      });
+      const daily = await loadCapacitiesForScenario(activeScenarioId);
+        setActiveCapacities(daily);
+        // Actualizar capacitiesRef explícitamente antes de llamar al callback
+        scenarioCapacitiesRef.current.set(activeScenarioId, { dailyCapacities: daily, initialized: true });
 
-      // 3. Cerrar modal
-      setIsCapacityModalOpen(false);
+        setIsCapacityModalOpen(false);
 
-      // 4. Delegar recálculo de WOs a UseGanttHooks (si está registrado)
-      if (recalculateCallbackRef.current) {
-        await recalculateCallbackRef.current(capacities, deletions, capacitiesRef.current);
-      }
+        if (recalculateCallbackRef.current) {
+          await recalculateCallbackRef.current(capacities, deletions, daily, activeScenarioId);
+        }
     } catch (error) {
       console.error('❌ [CapacityContext] Error en handleSaveCapacity:', error);
       throw error;
     }
-  }, [loadCapacities]);
+  }, [activeScenarioId, loadCapacitiesForScenario]);
 
   const value: CapacityContextType = {
-    dailyCapacities,
+    dailyCapacities: activeCapacities,
     isLoading,
     error,
     refresh,
@@ -188,8 +225,6 @@ export const CapacityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
 export const useCapacity = () => {
   const context = useContext(CapacityContext);
-  if (!context) {
-    throw new Error('useCapacity debe usarse dentro de CapacityProvider');
-  }
+  if (!context) throw new Error('useCapacity debe usarse dentro de CapacityProvider');
   return context;
 };

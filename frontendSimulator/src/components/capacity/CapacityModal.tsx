@@ -93,10 +93,8 @@ const CapacityModal: React.FC<CapacityModalProps> = ({
 
     setIsLoadingCapacities(true);
     try {
-      console.log(`Cargando capacidades para escenario ${scenarioId}, año ${selectedYear}`);
       
       const existingCapacities = await getCapacities(scenarioId, selectedYear);
-      console.log("Capacidades existentes cargadas:", existingCapacities);
 
       const newCapacityValues: Record<string, Record<number, number>> = {};
       
@@ -109,7 +107,6 @@ const CapacityModal: React.FC<CapacityModalProps> = ({
 
       setCapacityValues(newCapacityValues);
       setOriginalCapacities(JSON.parse(JSON.stringify(newCapacityValues)));
-      console.log("Capacidades cargadas en el estado:", newCapacityValues);
       
     } catch (error) {
       console.error("Error al cargar capacidades existentes:", error);
@@ -285,9 +282,6 @@ const CapacityModal: React.FC<CapacityModalProps> = ({
         }
       });
     });
-    
-    console.log("Capacidades a guardar:", capacities);
-    console.log("Capacidades a eliminar:", deletions);
     
     return { capacities, deletions };
   };
