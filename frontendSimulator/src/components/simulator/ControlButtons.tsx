@@ -4,18 +4,21 @@ import api from '../../api';
 import { useGlobalLoading } from '../../App';
 import { useFabricacionesContext } from '../../contexts/FabricacionesContext';
 import { useCapacity } from '../../contexts/CapacityContext';
-
+import ImportExcelModal from './ImportExcelModal';
+import { generarExcel } from '../../services/generarExcel';
+import { IFabricacionConHoras } from '../../interfaces/IFabricacionConHoras';
 
 type ControlButtonsProps = {
   scenarioId: number | null;
   currentView?: string;
   onViewChange?: (view: string) => void;
+  fabricacionesFiltradas?: IFabricacionConHoras[];
 };
-
 const ControlButtons: React.FC<ControlButtonsProps> = memo(({ 
   scenarioId, 
   currentView, 
-  onViewChange 
+  onViewChange,
+  fabricacionesFiltradas
 }) => {
   const { setGlobalLoading } = useGlobalLoading();
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -165,6 +168,21 @@ const ControlButtons: React.FC<ControlButtonsProps> = memo(({
     }
   }, [scenarioId, hasPendingChanges, pendingChanges, savePendingChanges, setGlobalLoading]);
 
+  const handleGenerarExcel = useCallback(async () => {
+  if (!fabricacionesFiltradas || fabricacionesFiltradas.length === 0) {
+    alert('No hay datos para exportar');
+    return;
+  }
+  setGlobalLoading(true, 'Generando Excel...');
+  try {
+    await generarExcel(fabricacionesFiltradas);
+  } finally {
+    setGlobalLoading(false);
+  }
+}, [fabricacionesFiltradas, setGlobalLoading]);
+
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
   React.useEffect(() => {
     return () => {
       if (pollingIntervalRef.current) {
@@ -187,11 +205,11 @@ const ControlButtons: React.FC<ControlButtonsProps> = memo(({
         
         <button
           className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          onClick={handleUpdateDataClick}
+          onClick={() => setIsImportModalOpen(true)}
           disabled={!scenarioId}
-          title={!scenarioId ? "Selecciona un escenario para actualizar datos" : "Actualizar datos desde archivos Excel"}
+          title="Importar datos desde Excel"
         >
-          🔄 Actualizar Datos
+          Importar Datos
         </button>
         
         {/* ✅ BOTÓN MODIFICADO: Cambia color y texto cuando hay cambios */}
@@ -219,6 +237,14 @@ const ControlButtons: React.FC<ControlButtonsProps> = memo(({
             'Aún no hay cambios'
           )}
         </button>
+        <button
+          className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          onClick={handleGenerarExcel}
+          disabled={!scenarioId}
+          title="Generar Excel con la planificación actual"
+        >
+          📊 Generar Excel
+        </button>
       </div>
 
       <CapacityModal
@@ -226,6 +252,10 @@ const ControlButtons: React.FC<ControlButtonsProps> = memo(({
         onClose={closeCapacityModal}
         onSave={handleSaveCapacity}
         scenarioId={scenarioId ?? 1}
+      />
+      <ImportExcelModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
       />
     </>
   );

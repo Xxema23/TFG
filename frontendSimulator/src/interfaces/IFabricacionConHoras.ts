@@ -3,12 +3,11 @@ export interface IFabricacionConHoras {
   Equipo: string;
   Secuencia: number;
   Linea: string;
-  Numero_de_pedido: string | null;
-  Tipo_de_pedido: string | null;
-  Estado_WO: number;
+  Estado_WO: string;
   Fch_Objetivo: string;
-  Fch_Acuse: string | null;
-  Fch_Albaran: string | null;
+  Fch_Pedido: string | null;
+  Fch_Prometida: string | null;
   Importe: number | null;
   horas_totales_de_la_wo: string;
+  sig_code?: string | null;
 }

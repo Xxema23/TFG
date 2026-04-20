@@ -13,41 +13,33 @@ class VisionFabricacionFiltro extends Controller
         $fabricaciones = DB::table('vision_fabricacion as vf')
             ->leftJoin('horas as h', function($join) {
                 $join->on('vf.wo', '=', 'h.wo')
-                     ->on('vf.linea', '=', 'h.linea_por_centro');
+                    ->on('vf.linea', '=', 'h.linea_por_centro');
             })
             ->select([
                 'vf.wo as NumWO',
                 'vf.linea as Linea',
                 'vf.fch_objetivo as Fch_Objetivo',
                 'vf.secuencia_fab as Secuencia',
-                'vf.estadowo as EstadoWO',
-                'vf.num_pedido',
-                'vf.tip_ped',
-                'vf.lin_ped',
-                'vf.maquina',
+                'vf.estadowo as Estado_WO',
+                'vf.maquina as Equipo',
                 'vf.sig_code',
-                'vf.fch_inicio',
-                'vf.frealfab',
+                'vf.fch_pedido as Fch_Pedido',
+                'vf.fch_prometida as Fch_Prometida',
+                'vf.importe as Importe',
                 DB::raw("COALESCE(h.horas, 1.0)::text as horas_totales_de_la_wo")
             ])
-            ->where('vf.estadowo', '>=', 39)
-            ->where('vf.estadowo', '<', 90)
+            ->whereIn('vf.estadowo', ['Pendiente', 'Reparación', 'En Proceso'])
             ->whereNotIn('vf.linea', [
-                'INSPECCION', 'RECEPCION', 'EXPEDICIONES', 
+                'INSPECCION', 'RECEPCION', 'EXPEDICIONES',
                 'VARIOS', 'ALMACEN', 'COMPRAS'
             ])
             ->whereRaw("vf.fch_objetivo::timestamp >= CURRENT_DATE - INTERVAL '7 days'")
             ->whereRaw("vf.fch_objetivo::timestamp <= CURRENT_DATE + INTERVAL '365 days'")
-            
-            // 🆕 EXCLUIR FINES DE SEMANA (Sábado=6, Domingo=0)
             ->whereRaw("EXTRACT(DOW FROM vf.fch_objetivo::timestamp) NOT IN (0, 6)")
-            
-            // 🆕 EXCLUIR DÍAS NO LABORABLES (Festivos) - CORREGIDO
             ->whereRaw("NOT EXISTS (
                 SELECT 1 FROM dias_no_laborales dnl
                 WHERE dnl.vacaciones::date = vf.fch_objetivo::date
             )")
-            
             ->orderBy('vf.fch_objetivo', 'asc')
             ->orderBy('vf.secuencia_fab', 'asc')
             ->limit(1000)

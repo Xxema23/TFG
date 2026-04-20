@@ -9,13 +9,16 @@ import DetailTablesPanel from './DetailTablesPanel/index';
 
 import { IFabricacionConHoras } from '../../interfaces/IFabricacionConHoras';
 import { UseSimulatorData } from './DetailTablesPanel/hooks/useSimulatorData';
+import axios from '../../api';
+import { IPalet } from '../../interfaces/ISimulatorData';
 
 const DEBUG_MODE = false;
 
 const filterFabricaciones = (
   fabricaciones: IFabricacionConHoras[],
   filterValues: FilterValues,
-  defaultLineFilter: string | null
+  defaultLineFilter: string | null,
+  paletsMap: Map<string, IPalet>
 ): IFabricacionConHoras[] => {
   if (!Array.isArray(fabricaciones) || fabricaciones.length === 0) return [];
 
@@ -36,23 +39,17 @@ const filterFabricaciones = (
     if (filterValues.equipo?.length > 0)
       filtered = filtered.filter(fab => filterValues.equipo.includes(fab.Equipo));
 
-    if (filterValues.numDoc?.length > 0)
-      filtered = filtered.filter(fab => filterValues.numDoc.includes(fab.Numero_de_pedido || ''));
+    if (filterValues.estadoWO?.length > 0)
+    filtered = filtered.filter(fab => filterValues.estadoWO.includes(fab.Estado_WO || ''));
 
-    if (filterValues.tipDoc?.length > 0)
-      filtered = filtered.filter(fab => filterValues.tipDoc.includes(fab.Tipo_de_pedido || ''));
-
-    if (filterValues.estadoWO?.length > 0) {
+    if (filterValues.palets?.length > 0)
       filtered = filtered.filter(fab => {
-        const estadoStr =
-          fab.Estado_WO === 1 ? 'Activo' :
-          fab.Estado_WO === 2 ? 'En Proceso' :
-          fab.Estado_WO === 3 ? 'Completado' :
-          fab.Estado_WO === 0 ? 'Pendiente' :
-          `Estado ${fab.Estado_WO || 'N/A'}`;
-        return filterValues.estadoWO.includes(estadoStr);
+        const palet = paletsMap.get(fab.NumWO);
+        return palet && filterValues.palets.includes(palet.num_de_palet);
       });
-    }
+    
+    if (filterValues.sigCode?.length > 0)
+    filtered = filtered.filter(fab => filterValues.sigCode.includes(fab.sig_code || ''));
 
     return filtered;
   } catch (error) {
@@ -122,6 +119,7 @@ interface DetailPanelProps {
   defaultLineFilter: string | null;
   lastUpdated: Date | null;
   fabricaciones: IFabricacionConHoras[];
+  paletsMap: Map<string, IPalet>;
 }
 
 const DetailPanel = React.memo(({
@@ -135,6 +133,7 @@ const DetailPanel = React.memo(({
   defaultLineFilter,
   lastUpdated,
   fabricaciones,
+  paletsMap,
 }: DetailPanelProps) => {
   try {
     return (
@@ -151,6 +150,7 @@ const DetailPanel = React.memo(({
         lastUpdated={lastUpdated}
         ganttCapacity={undefined}
         ganttWorkingDays={undefined}
+        paletsMap={paletsMap}
       />
     );
   } catch (error) {
@@ -202,18 +202,29 @@ const Simulator: React.FC = () => {
   }, []);
 
   const [filterValues, setFilterValues] = useState<FilterValues>({
-    linea: [getStoredLine()],
-    numWO: [],
-    numDoc: [],
-    equipo: [],
-    estadoWO: [],
-    tipDoc: [],
-    articulo: [],
-    proveedor: [],
-    fchObjetivo: null
+      linea: [getStoredLine()],
+      numWO: [],
+      equipo: [],
+      estadoWO: [],
+      sigCode: [],
+      palets: [],
+      fchObjetivo: null
   });
 
   const [hasInitialized, setHasInitialized] = useState(false);
+
+  const [paletsMap, setPaletsMap] = useState<Map<string, IPalet>>(new Map());
+
+    useEffect(() => {
+      axios.get('http://192.168.18.4:8000/api/palets')
+        .then(r => {
+          const map = new Map<string, IPalet>();
+          r.data.forEach((p: IPalet) => {
+            if (p.num_orden) map.set(p.num_orden, p);
+          });
+          setPaletsMap(map);
+        });
+    }, []);
 
   const filterValuesRef = useRef(filterValues);
   filterValuesRef.current = filterValues;
@@ -229,8 +240,8 @@ const Simulator: React.FC = () => {
 
   const fabricacionesFiltradas = useMemo(() => {
     if (fabricaciones.length === 0) return [];
-    return filterFabricaciones(fabricaciones, filterValues, defaultLineFilter);
-  }, [fabricaciones, filterValues, defaultLineFilter]);
+    return filterFabricaciones(fabricaciones, filterValues, defaultLineFilter, paletsMap);
+  }, [fabricaciones, filterValues, defaultLineFilter, paletsMap]);
 
   const hasActiveFilters = useMemo(() => {
     if (!filterValues || typeof filterValues !== 'object') return false;
@@ -254,7 +265,7 @@ const Simulator: React.FC = () => {
 
   const filterOptions = useMemo(() => {
     if (!Array.isArray(fabricaciones) || fabricaciones.length === 0) {
-      return { linea: availableLines, numWO: [], numDoc: [], equipo: [], estadoWO: [], tipDoc: [], articulo: [], proveedor: [] };
+      return { linea: availableLines, numWO: [], equipo: [], estadoWO: [], sigCode: [], palets: []};
     }
 
     const extractValues = (key: keyof IFabricacionConHoras): string[] => {
@@ -268,26 +279,21 @@ const Simulator: React.FC = () => {
       return Array.from(values).sort();
     };
 
+    const paletNums = [...new Set(
+        Array.from(paletsMap.values())
+          .filter(p => p.num_de_palet)
+          .map(p => p.num_de_palet)
+      )].sort();
+
     return {
-      linea: availableLines,
-      numWO: extractValues('NumWO'),
-      numDoc: extractValues('Numero_de_pedido'),
-      equipo: extractValues('Equipo'),
-      estadoWO: fabricaciones
-        .map(fab =>
-          fab.Estado_WO === 1 ? 'Activo' :
-          fab.Estado_WO === 2 ? 'En Proceso' :
-          fab.Estado_WO === 3 ? 'Completado' :
-          fab.Estado_WO === 0 ? 'Pendiente' :
-          `Estado ${fab.Estado_WO || 'N/A'}`
-        )
-        .filter((val, i, arr) => arr.indexOf(val) === i)
-        .sort(),
-      tipDoc: extractValues('Tipo_de_pedido'),
-      articulo: [] as string[],
-      proveedor: [] as string[]
+        linea: availableLines,
+        numWO: extractValues('NumWO'),
+        equipo: extractValues('Equipo'),
+        estadoWO: extractValues('Estado_WO'),
+        sigCode: extractValues('sig_code'),
+        palets: paletNums
     };
-  }, [fabricaciones, availableLines]);
+  }, [fabricaciones, availableLines, paletsMap]);
 
   const availableWOs = useMemo(() => {
     return fabricacionesFiltradas.map((_, i) => `wo_${i}`);
@@ -309,15 +315,13 @@ const Simulator: React.FC = () => {
 
   const clearAllFilters = useCallback(() => {
     setFilterValues({
-      linea: [defaultLineFilter || DEFAULT_LINE],
-      numWO: [],
-      numDoc: [],
-      equipo: [],
-      estadoWO: [],
-      tipDoc: [],
-      articulo: [],
-      proveedor: [],
-      fchObjetivo: null
+        linea: [defaultLineFilter || DEFAULT_LINE],
+        numWO: [],
+        equipo: [],
+        estadoWO: [],
+        sigCode: [],
+        palets: [],
+        fchObjetivo: null
     });
   }, [defaultLineFilter]);
 
@@ -374,7 +378,12 @@ const Simulator: React.FC = () => {
       <div className="flex justify-between items-center p-2 bg-white border-b flex-shrink-0">
         <ScenarioTabs selectedScenario={activeScenario} onScenarioChange={handleScenarioChange} />
         <div className="flex items-center space-x-2">
-          <ControlButtons scenarioId={activeScenario} currentView="details" onViewChange={() => {}} />
+          <ControlButtons 
+            scenarioId={activeScenario} 
+            currentView="details" 
+            onViewChange={() => {}}
+            fabricacionesFiltradas={fabricacionesFiltradas}
+          />
         </div>
       </div>
 
@@ -405,23 +414,24 @@ const Simulator: React.FC = () => {
               </div>
             </div>
           }
-          bottom={
-            <div className="flex flex-col h-full overflow-hidden">
-              <div className="flex-1 overflow-hidden">
-                <DetailPanel
-                  availableComponents={availableComponents}
-                  componentAvailability={componentAvailability}
-                  handleReorderWO={handleReorderWO}
-                  selectedWorkOrderIds={selectedWorkOrderIds}
-                  availableWOs={availableWOs}
-                  fabricacionesFiltradas={fabricacionesFiltradas}
-                  hasActiveFilters={hasActiveFilters}
-                  defaultLineFilter={defaultLineFilter}
-                  lastUpdated={lastUpdated}
-                  fabricaciones={fabricaciones}
-                />
+            bottom={
+              <div className="flex flex-col h-full overflow-hidden">
+                <div className="flex-1 overflow-hidden">
+                  <DetailPanel
+                    availableComponents={availableComponents}
+                    componentAvailability={componentAvailability}
+                    handleReorderWO={handleReorderWO}
+                    selectedWorkOrderIds={selectedWorkOrderIds}
+                    availableWOs={availableWOs}
+                    fabricacionesFiltradas={fabricacionesFiltradas}
+                    hasActiveFilters={hasActiveFilters}
+                    defaultLineFilter={defaultLineFilter}
+                    lastUpdated={lastUpdated}
+                    fabricaciones={fabricaciones}
+                    paletsMap={paletsMap}
+                  />
+                </div>
               </div>
-            </div>
           }
           initialBottomHeight="40%"
         />

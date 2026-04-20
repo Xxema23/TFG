@@ -19,24 +19,20 @@ const useDebouncedValue = (value: string, delay: number) => {
 export type FilterValues = {
   linea: string[];
   numWO: string[];
-  numDoc: string[];
   equipo: string[];
   estadoWO: string[];
-  tipDoc: string[];
-  articulo: string[];
-  proveedor: string[];
+  sigCode: string[];
+  palets: string[];
   fchObjetivo: string | null;
 };
 
 type FilterOptions = {
   linea: string[];
   numWO: string[];
-  numDoc: string[];
   equipo: string[];
   estadoWO: string[];
-  tipDoc: string[];
-  articulo: string[];
-  proveedor: string[];
+  sigCode: string[];
+  palets: string[];
 };
 
 type FilterPanelProps = {
@@ -56,12 +52,10 @@ const createSafeFilterValues = (filterValues: Partial<FilterValues>): FilterValu
   return {
     linea: Array.isArray(filterValues.linea) ? filterValues.linea : [],
     numWO: Array.isArray(filterValues.numWO) ? filterValues.numWO : [],
-    numDoc: Array.isArray(filterValues.numDoc) ? filterValues.numDoc : [],
     equipo: Array.isArray(filterValues.equipo) ? filterValues.equipo : [],
     estadoWO: Array.isArray(filterValues.estadoWO) ? filterValues.estadoWO : [],
-    tipDoc: Array.isArray(filterValues.tipDoc) ? filterValues.tipDoc : [],
-    articulo: Array.isArray(filterValues.articulo) ? filterValues.articulo : [],
-    proveedor: Array.isArray(filterValues.proveedor) ? filterValues.proveedor : [],
+    sigCode: Array.isArray(filterValues.sigCode) ? filterValues.sigCode : [],
+    palets: Array.isArray(filterValues.palets) ? filterValues.palets : [],
     fchObjetivo: filterValues.fchObjetivo || null
   };
 };
@@ -89,8 +83,12 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
   const filterOptions = useMemo(() => {
     if (providedFilterOptions) {
       return {
-        ...providedFilterOptions,
-        linea: availableLines.length > 0 ? availableLines : providedFilterOptions.linea
+        linea: availableLines.length > 0 ? availableLines : providedFilterOptions.linea,
+        numWO: providedFilterOptions.numWO || [],
+        equipo: providedFilterOptions.equipo || [],
+        estadoWO: providedFilterOptions.estadoWO || [],
+        sigCode: providedFilterOptions.sigCode || [],
+        palets: providedFilterOptions.palets || []
       };
     }
 
@@ -344,12 +342,10 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
   const filterTabs = [
     { key: 'linea', label: 'Línea' },
     { key: 'numWO', label: 'NumWO' },
-    { key: 'numDoc', label: 'NumDoc' },
     { key: 'equipo', label: 'Equipo' },
     { key: 'estadoWO', label: 'Estado' },
-    { key: 'tipDoc', label: 'TipDoc' },
-    { key: 'articulo', label: 'Artículo' },
-    { key: 'proveedor', label: 'Proveedor' },
+    { key: 'sigCode', label: 'Sig Code' },
+    { key: 'palets', label: 'Palets' },
     { key: 'fchObjetivo', label: 'Fecha' }
   ];
 

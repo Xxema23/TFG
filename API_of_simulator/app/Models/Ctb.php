@@ -11,7 +11,8 @@ class Ctb extends Model
     protected $table = 'ctb';
 
     // Clave primaria
-    protected $primaryKey = 'id';
+    protected $primaryKey = null;
+    public $incrementing = false;
 
     // Laravel no gestiona timestamps automáticamente
     public $timestamps = false;

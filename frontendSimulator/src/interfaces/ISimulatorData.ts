@@ -4,16 +4,13 @@ export interface IWorkOrderBackend {
   Equipo: string;
   Secuencia: number;
   Linea: string;
-  Numero_de_pedido: string | null;
-  Tipo_de_pedido: string | null;
-  Estado_WO: number;
+  Estado_WO: string;
   Fch_Objetivo: string;
-  Fch_Acuse: string | null;
-  Fch_Albaran: string | null;
+  Fch_Pedido: string | null;
+  Fch_Prometida: string | null;
   Importe: number | null;
   Horas_totales_de_la_WO: string;
-  Source?: string;
-  Item_Code?: string;
+  sig_code?: string | null;
 }
 
 export interface IWorkOrderColor {
@@ -58,15 +55,13 @@ export interface IWorkOrderFrontend {
   equipo: string;
   secuencia: number;
   linea: string;
-  numDoc: string;
-  tipDoc: string;
   estadoWO: string;
   fchObjetivo: string;
-  fchAcuse: string;
-  fchAlbarAn: string;
+  fchPedido: string;
+  fchPrometida: string;
   importe: number | null;
   cshTotal: number;
-  // ✅ NUEVA: Información de palets
+  sigCode?: string | null;
   paletInfo?: {
     num_de_palet: string;
     palet_2nd_number?: string | null;

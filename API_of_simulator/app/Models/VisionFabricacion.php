@@ -12,8 +12,9 @@ class VisionFabricacion extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'num_pedido', 'tip_ped', 'lin_ped', 'linea', 'secuencia_fab', 'wo',
-        'maquina', 'sig_code', 'estadowo', 'fch_inicio', 'fch_objetivo', 'frealfab'
+        'linea', 'secuencia_fab', 'wo',
+        'maquina', 'sig_code', 'estadowo', 'fch_objetivo',
+        'importe', 'fch_pedido', 'fch_prometida'
     ];
 
     public function horas()

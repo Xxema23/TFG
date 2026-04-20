@@ -7,26 +7,13 @@ interface IFabricacionConHoras {
   Secuencia: number;
   Linea: string;
   Fch_Objetivo: string;
-  Fch_Acuse: string;
-  Estado_WO: number;
+  Fch_Pedido: string | null;
+  Fch_Prometida: string | null;
+  Estado_WO: string;
   Importe: number;
   horas_totales_de_la_wo: string;
-  Numero_de_pedido?: string;
-  Tipo_de_pedido?: string;
-  Fch_Albaran?: string;
-  Descripcion?: string;
-  Cliente?: string;
-  Cantidad?: number;
-  Unidad?: string;
-  Precio_Unitario?: number;
+  sig_code?: string | null;
 }
-
-// ALTERNATIVA: Si encuentras el archivo, descomenta una de estas líneas:
-// import type { IFabricacionConHoras } from '../../../interfaces/IFabricacionConHoras';
-// import type { IFabricacionConHoras } from '@/interfaces/IFabricacionConHoras';
-// import type { IFabricacionConHoras } from '../../interfaces/IFabricacionConHoras';
-// import type { IFabricacionConHoras } from '../interfaces/IFabricacionConHoras';
-// import type { IFabricacionConHoras } from 'src/interfaces/IFabricacionConHoras';
 
 // Interfaz para WorkOrder del simulador
 interface SimulatorWorkOrder {
@@ -35,14 +22,13 @@ interface SimulatorWorkOrder {
   equipo: string;
   secuencia: number;
   linea: string;
-  numDoc: string;
-  tipDoc: string;
   estadoWO: string;
   fchObjetivo: string;
-  fchAcuse: string;
-  fchAlbarAn: string;
+  fchPedido: string;
+  fchPrometida: string;
   importe: number | null;
   cshTotal: number;
+  sigCode?: string;
   articulo?: string;
   proveedor?: string;
 }
@@ -57,20 +43,12 @@ export const convertSimulatorToGantt = (simulatorWO: SimulatorWorkOrder): IFabri
     Secuencia: simulatorWO.secuencia,
     Linea: simulatorWO.linea,
     Fch_Objetivo: simulatorWO.fchObjetivo,
-    Fch_Acuse: simulatorWO.fchAcuse || '',
-    Estado_WO: parseInt(simulatorWO.estadoWO, 10) || 0,
+    Fch_Pedido: simulatorWO.fchPedido || '',
+    Fch_Prometida: simulatorWO.fchPrometida || '',
+    Estado_WO: simulatorWO.estadoWO,
     Importe: simulatorWO.importe || 0,
     horas_totales_de_la_wo: simulatorWO.cshTotal.toString(),
-    // Campos opcionales que pueden no existir en el simulador
-    Numero_de_pedido: simulatorWO.numDoc || '',
-    Tipo_de_pedido: simulatorWO.tipDoc || '',
-    Fch_Albaran: simulatorWO.fchAlbarAn || '',
-    // Añadir valores por defecto para campos requeridos que falten
-    Descripcion: '',
-    Cliente: '',
-    Cantidad: 0,
-    Unidad: '',
-    Precio_Unitario: 0
+    sig_code: simulatorWO.sigCode || ''
   };
 };
 
@@ -79,20 +57,19 @@ export const convertSimulatorToGantt = (simulatorWO: SimulatorWorkOrder): IFabri
  */
 export const convertGanttToSimulator = (ganttWO: IFabricacionConHoras): SimulatorWorkOrder => {
   return {
-    id: ganttWO.NumWO, // Usar NumWO como ID único
+    id: ganttWO.NumWO,
     numWO: ganttWO.NumWO,
     equipo: ganttWO.Equipo,
     secuencia: ganttWO.Secuencia,
     linea: ganttWO.Linea,
-    numDoc: ganttWO.Numero_de_pedido || '',
-    tipDoc: ganttWO.Tipo_de_pedido || '',
-    estadoWO: ganttWO.Estado_WO.toString(),
+    estadoWO: ganttWO.Estado_WO,
     fchObjetivo: ganttWO.Fch_Objetivo,
-    fchAcuse: ganttWO.Fch_Acuse || '',
-    fchAlbarAn: ganttWO.Fch_Albaran || '',
+    fchPedido: ganttWO.Fch_Pedido || '',
+    fchPrometida: ganttWO.Fch_Prometida || '',
     importe: ganttWO.Importe || 0,
     cshTotal: parseFloat(ganttWO.horas_totales_de_la_wo) || 0,
-    articulo: '', // Estos campos no están en IFabricacionConHoras
+    sigCode: ganttWO.sig_code || '',
+    articulo: '',
     proveedor: ''
   };
 };

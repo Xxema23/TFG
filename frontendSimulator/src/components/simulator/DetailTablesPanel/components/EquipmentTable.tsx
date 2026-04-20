@@ -153,10 +153,7 @@ const EquipmentRow = memo<{
         {formatNumericField(wo.linea)}
       </td>
       <td className="px-2 py-1 border-b text-xs whitespace-nowrap">
-        {formatNumericField(wo.numDoc)}
-      </td>
-      <td className="px-2 py-1 border-b text-xs whitespace-nowrap">
-        {formatNumericField(wo.tipDoc)}
+        {formatNumericField(wo.sigCode)}
       </td>
       <td className="px-2 py-1 border-b text-xs whitespace-nowrap text-center">
         <span className={getPaletInfo(wo) === '-' ? 'text-gray-400' : 'text-blue-600 font-medium'}>
@@ -165,7 +162,7 @@ const EquipmentRow = memo<{
       </td>
       <td className="px-2 py-1 border-b text-xs whitespace-nowrap">
         <span className={`px-2 py-1 rounded-full text-xs ${
-          wo.estadoWO === 'Completado' ? 'bg-green-100 text-green-800' :
+          wo.estadoWO === 'Reparación' ? 'bg-red-100 text-red-800' :
           wo.estadoWO === 'En Proceso' ? 'bg-yellow-100 text-yellow-800' :
           wo.estadoWO === 'Pendiente' ? 'bg-gray-100 text-gray-800' :
           'bg-blue-100 text-blue-800'
@@ -185,10 +182,10 @@ const EquipmentRow = memo<{
         />
       </td>
       <td className="px-2 py-1 border-b text-xs whitespace-nowrap">
-        {formatDateDisplay(wo.fchAcuse)}
+        {formatDateDisplay(wo.fchPedido)}
       </td>
       <td className="px-2 py-1 border-b text-xs whitespace-nowrap">
-        {formatDateDisplay(wo.fchAlbarAn)}
+        {formatDateDisplay(wo.fchPrometida)}
       </td>
       <td className="px-2 py-1 border-b text-xs whitespace-nowrap text-right">
         <span className="font-medium text-green-600">
@@ -366,13 +363,12 @@ const EquipmentTableComponent: React.FC<EquipmentTableProps> = ({
             <th className="px-2 py-1 text-left border-b sticky top-0 z-10 bg-gray-50 w-20 font-semibold">Equipo</th>
             <th className="px-2 py-1 text-center border-b sticky top-0 z-10 bg-gray-50 w-20 font-semibold">Secuencia</th>
             <th className="px-2 py-1 text-center border-b sticky top-0 z-10 bg-gray-50 w-16 font-semibold">Línea</th>
-            <th className="px-2 py-1 text-left border-b sticky top-0 z-10 bg-gray-50 w-20 font-semibold">NumDoc</th>
-            <th className="px-2 py-1 text-left border-b sticky top-0 z-10 bg-gray-50 w-20 font-semibold">TipDoc</th>
+            <th className="px-2 py-1 text-left border-b sticky top-0 z-10 bg-gray-50 w-20 font-semibold">Sig Code</th>
             <th className="px-2 py-1 text-center border-b sticky top-0 z-10 bg-gray-50 w-16 font-semibold">📦 Palets</th>
             <th className="px-2 py-1 text-left border-b sticky top-0 z-10 bg-gray-50 w-24 font-semibold">Estado WO</th>
             <th className="px-2 py-1 text-left border-b sticky top-0 z-10 bg-gray-50 w-28 font-semibold">📅 Fch Objetivo</th>
-            <th className="px-2 py-1 text-left border-b sticky top-0 z-10 bg-gray-50 w-24 font-semibold">Fch Acuse</th>
-            <th className="px-2 py-1 text-left border-b sticky top-0 z-10 bg-gray-50 w-24 font-semibold">Fch Albarán</th>
+            <th className="px-2 py-1 text-left border-b sticky top-0 z-10 bg-gray-50 w-24 font-semibold">Fch Pedido</th>
+            <th className="px-2 py-1 text-left border-b sticky top-0 z-10 bg-gray-50 w-24 font-semibold">Fch Prometida</th>
             <th className="px-2 py-1 text-right border-b sticky top-0 z-10 bg-gray-50 w-20 font-semibold">💰 Importe</th>
             <th className="px-2 py-1 text-right border-b sticky top-0 z-10 bg-gray-50 w-20 font-semibold">⏱️ CSH total</th>
           </tr>
@@ -380,7 +376,7 @@ const EquipmentTableComponent: React.FC<EquipmentTableProps> = ({
         <tbody>
           {filteredWOIds.length === 0 ? (
             <tr>
-              <td colSpan={13} className="px-4 py-8 text-center text-gray-500">
+              <td colSpan={12} className="px-4 py-8 text-center text-gray-500">
                 <div className="flex flex-col items-center space-y-2">
                   <svg className="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />

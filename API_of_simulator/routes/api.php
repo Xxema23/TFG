@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\ColoresWoControllerDisponible;
 use App\Http\Controllers\Api\PaletFiltro;
 use App\Http\Controllers\CapacidadBaseController;
 use App\Http\Controllers\CapacidadSemanalController;
+use App\Http\Controllers\Api\ImportExcelController; 
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -66,3 +67,5 @@ Route::prefix('scenarios/{scenarioId}')->group(function () {
     Route::post('/capacidades-semanales', [CapacidadSemanalController::class, 'saveBatch']);
     Route::delete('/capacidades-semanales', [CapacidadSemanalController::class, 'deleteBatch']);
 });
+
+Route::post('/import-excel', [ImportExcelController::class, 'import']);

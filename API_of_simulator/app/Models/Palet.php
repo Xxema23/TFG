@@ -11,7 +11,9 @@ class Palet extends Model
     protected $table = 'palets';
 
     // Clave primaria
-    protected $primaryKey = 'id';
+    protected $primaryKey = 'num_orden';
+    public $incrementing = false;
+    protected $keyType = 'string';
 
     // Laravel no gestiona automáticamente los timestamps
     public $timestamps = false;

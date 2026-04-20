@@ -7,12 +7,11 @@ export interface WorkOrder {
   equipo: string;
   secuencia: string | number;
   linea: string;
-  numDoc: string | null;
-  tipDoc: string | null;
   estadoWO: string;
   fchObjetivo: string;
-  fchAcuse: string | null;
-  fchAlbarAn: string | null;
+  fchPedido: string | null;
+  fchPrometida: string | null;
+  sigCode?: string | null;
   importe: number;
   cshTotal: number;
   paletInfo?: {
@@ -54,6 +53,7 @@ export interface DetailTablesPanelProps {
   ganttCapacity?: any;
   ganttWorkingDays?: any;
   onWorkOrderUpdated?: (woId: string, field: string, value: any) => void;
+  paletsMap?: Map<string, any>;
 }
 
 export interface DragState {

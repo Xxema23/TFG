@@ -11,6 +11,7 @@ import UseTableSync from './hooks/useTableSync';
 import { useFabricacionesContext } from '../../../contexts/FabricacionesContext';
 import { useComponentesDisponibilidad } from '../../../hooks/useComponentesDisponibilidad';
 import { transformComponentesData, calcularConsumoSecuencial } from '../../../services/componentesService';
+import { getPalets, createPaletsMap } from '../../../services/SimulatorServices';
 import { useCapacity } from '../../../contexts/CapacityContext';
 import { useFabricacionesData, useFabricacionesActions } from '../../../contexts/FabricacionesContext';
 
@@ -28,10 +29,12 @@ const DetailTablesPanel: React.FC<DetailTablesPanelProps & { lastUpdated?: Date 
   filteredFabrications = [],
   useFilteredData = false,
   defaultLineFilter = "S21",
-  lastUpdated
+  lastUpdated,
+  paletsMap,
 }) => {
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const [lastModifiedDay, setLastModifiedDay] = useState<string | null>(null);
+
   const { dailyCapacities: capacity, workingDays } = useCapacity();
   const capacityRef = useRef(capacity);
   const workingDaysRef = useRef(workingDays);
@@ -189,37 +192,34 @@ const numWOsParaComponentes = useMemo(() => {
     const uniqueDataToUse = Array.from(uniqueWOsMap.values());
 
     const enriched = uniqueDataToUse.map((fab, index) => ({
-      id: `wo_${index}`,
-      numWO: fab.NumWO || '',
-      equipo: fab.Equipo || '',
-      secuencia: fab.Secuencia || 0,
-      linea: fab.Linea || '',
-      numDoc: fab.Numero_de_pedido || '',
-      tipDoc: fab.Tipo_de_pedido || '',
-      estadoWO: fab.Estado_WO === 1 ? 'Activo' :
-                fab.Estado_WO === 2 ? 'En Proceso' :
-                fab.Estado_WO === 3 ? 'Completado' :
-                fab.Estado_WO === 0 ? 'Pendiente' :
-                `Estado ${fab.Estado_WO || 'N/A'}`,
-      fchObjetivo: fab.Fch_Objetivo || '',
-      fchAcuse: fab.Fch_Acuse || '',
-      fchAlbarAn: fab.Fch_Albaran || '',
-      importe: fab.Importe || 0,
-      cshTotal: parseFloat(fab.horas_totales_de_la_wo) || 0,
-      paletInfo: { num_de_palet: null },
-      originalIndex: index,
-      _originalData: fab
-    }));
-    
-    return enriched;
-  }, [
-    // ✅ OPTIMIZADO: Solo longitud y elementos clave
-    dataToUse.length,
-    dataToUse[0]?.NumWO,
-    dataToUse[0]?.Secuencia,
-    dataToUse[dataToUse.length - 1]?.NumWO,
-    dataToUse[dataToUse.length - 1]?.Secuencia
-  ]);
+        id: `wo_${index}`,
+        numWO: fab.NumWO || '',
+        equipo: fab.Equipo || '',
+        secuencia: fab.Secuencia || 0,
+        linea: fab.Linea || '',
+        estadoWO: fab.Estado_WO || '',
+        fchObjetivo: fab.Fch_Objetivo || '',
+        fchPedido: fab.Fch_Pedido || '',
+        fchPrometida: fab.Fch_Prometida || '',
+        importe: fab.Importe || 0,
+        sigCode: fab.sig_code || '',
+        cshTotal: parseFloat(fab.horas_totales_de_la_wo) || 0,
+        paletInfo: paletsMap?.get(fab.NumWO) ? {
+          num_de_palet: paletsMap.get(fab.NumWO)!.num_de_palet,
+          palet_2nd_number: paletsMap.get(fab.NumWO)!.palet_2nd_number
+        } : null,
+        originalIndex: index,
+        _originalData: fab
+      }));
+      return enriched;
+    }, [
+      dataToUse.length,
+      dataToUse[0]?.NumWO,
+      dataToUse[0]?.Secuencia,
+      dataToUse[dataToUse.length - 1]?.NumWO,
+      dataToUse[dataToUse.length - 1]?.Secuencia,
+      paletsMap
+    ]);
 
   const workOrdersSignature = useMemo(() => {
     if (enrichedWorkOrders.length === 0) return '';
@@ -288,7 +288,7 @@ const numWOsParaComponentes = useMemo(() => {
     const visible = enrichedWorkOrders.filter(wo => filteredWOIds.includes(wo.id));
     return visible;
   }, [
-    enrichedWorkOrders.length,
+    enrichedWorkOrders,
     filteredWOIds.length
   ]);
 

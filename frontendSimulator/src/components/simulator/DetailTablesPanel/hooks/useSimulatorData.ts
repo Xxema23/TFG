@@ -64,13 +64,12 @@ const mapFabricacionToWorkOrder = (
     equipo: fabricacion.Equipo || '',
     secuencia: fabricacion.Secuencia || 0,
     linea: fabricacion.Linea,
-    numDoc: fabricacion.Numero_de_pedido || '',
-    tipDoc: fabricacion.Tipo_de_pedido || '',
-    estadoWO: (fabricacion.Estado_WO || 0).toString(),
+    estadoWO: fabricacion.Estado_WO || '',
     fchObjetivo: fabricacion.Fch_Objetivo,
-    fchAcuse: fabricacion.Fch_Acuse || '',
-    fchAlbarAn: fabricacion.Fch_Albaran || '',
+    fchPedido: fabricacion.Fch_Pedido || '',
+    fchPrometida: fabricacion.Fch_Prometida || '',
     importe: fabricacion.Importe || 0,
+    sigCode: fabricacion.sig_code || '',
     cshTotal: parseHorasTotales(fabricacion.horas_totales_de_la_wo),
     paletInfo: palet ? { num_de_palet: palet.num_de_palet, palet_2nd_number: palet.palet_2nd_number } : null
   };
