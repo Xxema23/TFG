@@ -172,6 +172,7 @@ const Simulator: React.FC = () => {
   const { fabricaciones, lastUpdated } = useFabricacionesContext();
 
   const [activeScenario, setActiveScenarioLocal] = useState<number | null>(1);
+  const [visibleScenarioCount, setVisibleScenarioCount] = useState<number>(1);  
   const { setActiveScenario } = useFabricacionesActions();
 
   const handleScenarioChange = useCallback((scenarioId: number | null) => {
@@ -376,7 +377,12 @@ const Simulator: React.FC = () => {
   return (
     <div className="w-full h-screen flex flex-col overflow-hidden">
       <div className="flex justify-between items-center p-2 bg-white border-b flex-shrink-0">
-        <ScenarioTabs selectedScenario={activeScenario} onScenarioChange={handleScenarioChange} />
+        <ScenarioTabs
+            selectedScenario={activeScenario}
+            onScenarioChange={handleScenarioChange}
+            visibleCount={visibleScenarioCount}
+            onVisibleCountChange={setVisibleScenarioCount}
+          />
         <div className="flex items-center space-x-2">
           <ControlButtons 
             scenarioId={activeScenario} 

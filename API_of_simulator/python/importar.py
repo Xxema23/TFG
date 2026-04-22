@@ -54,7 +54,7 @@ def importar_stocks(df, cur):
         VALUES %s
         ON CONFLICT (articulo) DO UPDATE SET
             descripcion = EXCLUDED.descripcion,
-            exist = stocks.exist + EXCLUDED.exist
+            exist = EXCLUDED.exist
     """
     execute_values(cur, sql, valores)
     return cur.rowcount    
