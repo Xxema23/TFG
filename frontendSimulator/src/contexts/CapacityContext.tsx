@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { DailyCapacity, CapacityData } from '../interfaces/Capacity';
+import { getNonWorkingDays } from '../services/vacacionesServices';
 import {
   getBaseCapacities,
   getCapacities,
@@ -64,25 +65,43 @@ export const CapacityProvider: React.FC<{
 
   // ── Días laborables ────────────────────────────────────────────────────────
   useEffect(() => {
-    const today = new Date();
-    const allWorkingDays: string[] = [];
-    const startDate = new Date(today);
-    startDate.setDate(today.getDate() - 7);
-    const endDate = new Date(today);
-    endDate.setDate(today.getDate() + 120);
+    const fetchWorkingDays = async () => {
+      const nonWorkingDates = await getNonWorkingDays();
+      const nonWorkingSet = new Set(nonWorkingDates);
 
-    let currentDate = new Date(startDate);
-    while (currentDate <= endDate) {
-      if (currentDate.getDay() !== 0 && currentDate.getDay() !== 6) {
-        allWorkingDays.push(currentDate.toISOString().split('T')[0]);
+      const today = new Date();
+      const allWorkingDays: string[] = [];
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() - 7);
+      const endDate = new Date(today);
+      endDate.setDate(today.getDate() + 120);
+
+      let currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        const dow = currentDate.getDay();
+        const y = currentDate.getFullYear();
+        const m = String(currentDate.getMonth() + 1).padStart(2, '0');
+        const d = String(currentDate.getDate()).padStart(2, '0');
+        const dateStr = `${y}-${m}-${d}`;
+
+        if (dow !== 0 && dow !== 6 && !nonWorkingSet.has(dateStr)) {
+          allWorkingDays.push(dateStr);
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
       }
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-    setWorkingDays(allWorkingDays);
+      setWorkingDays(allWorkingDays);
+    };
+
+    fetchWorkingDays();
   }, []);
 
   // ── Carga de capacidades para un escenario ────────────────────────────────
   const loadCapacitiesForScenario = useCallback(async (scenarioId: number): Promise<DailyCapacity[]> => {
+    console.log('🔄 [loadCapacities] scenarioId:', scenarioId, 
+  'workingDaysRef:', workingDaysRef.current.length,
+  'workingDays:', workingDays.length,
+  'isLoading:', isLoadingRef.current
+);
     if (!scenarioId || typeof scenarioId !== 'number') return [];
     if (isLoadingRef.current) return [];
     try {

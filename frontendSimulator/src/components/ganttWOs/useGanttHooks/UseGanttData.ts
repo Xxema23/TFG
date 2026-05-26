@@ -42,9 +42,16 @@ export const useGanttData = (lineId: string = 'default') => {
   }, []);
 
   useEffect(() => {
-    // Resetear data al cache de la nueva clave (null si es nueva)
-    setData(dataCache.get(lineId) || null);
-    setWorkingDays(workingDaysCache.get(lineId) || []);
+    // Resetear al caché de la nueva clave
+    const cachedData = dataCache.get(lineId);
+    const cachedDays = workingDaysCache.get(lineId);
+
+    if (cachedData && cachedDays?.length > 0) {
+      // Ya tenemos todo en caché, usarlo directamente
+      setData(cachedData);
+      setWorkingDays(cachedDays);
+      return;
+    }
 
     if (initializationState.get(lineId)) {
       return;
@@ -52,19 +59,16 @@ export const useGanttData = (lineId: string = 'default') => {
 
     initializationState.set(lineId, true);
 
-    // Reusar días no laborables ya cargados si existen para cualquier clave
+    // ✅ Inicializar data a {} vacío INMEDIATAMENTE para salir de null
+    const emptyData = { workOrders: [], capacity: [], nonWorkingDays: [] };
+    dataCache.set(lineId, emptyData);
+    setData(emptyData);
+
+    // Reusar días ya cargados si existen para cualquier clave
     const existingWorkingDays = Array.from(workingDaysCache.values()).find(d => d.length > 0);
     if (existingWorkingDays) {
       workingDaysCache.set(lineId, existingWorkingDays);
       setWorkingDays(existingWorkingDays);
-
-      const initialData = {
-        workOrders: [],
-        capacity: [],
-        nonWorkingDays: [],
-      };
-      dataCache.set(lineId, initialData);
-      setData(initialData);
       return;
     }
 
@@ -77,27 +81,15 @@ export const useGanttData = (lineId: string = 'default') => {
         workingDaysCache.set(lineId, initialWorkingDays);
         setWorkingDays(initialWorkingDays);
 
-        const initialData = {
-          workOrders: [],
-          capacity: [],
-          nonWorkingDays: nonWorkingFromApi || [],
-        };
-
+        const initialData = { workOrders: [], capacity: [], nonWorkingDays: nonWorkingFromApi || [] };
         dataCache.set(lineId, initialData);
         setData(initialData);
       } catch (error) {
         console.error(`❌ [useGanttData] Error cargando días no laborables:`, error);
-
         const fallbackDays = generateFallbackWorkingDays;
         workingDaysCache.set(lineId, fallbackDays);
         setWorkingDays(fallbackDays);
-
-        const fallbackData = {
-          workOrders: [],
-          capacity: [],
-          nonWorkingDays: [],
-        };
-
+        const fallbackData = { workOrders: [], capacity: [], nonWorkingDays: [] };
         dataCache.set(lineId, fallbackData);
         setData(fallbackData);
       } finally {

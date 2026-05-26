@@ -92,7 +92,7 @@ function App() {
                         Por favor, no cierre ni recargue la página
                       </p>
                       <p className="text-xs text-gray-500 mt-1">
-                        Este proceso puede tardar hasta 20 minutos
+                        Este proceso puede tardar
                       </p>
                     </div>
 

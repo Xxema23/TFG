@@ -73,6 +73,21 @@ def importar_palets(df, cur):
     execute_values(cur, sql, valores)
     return cur.rowcount
 
+
+def importar_horas(df, cur):
+    columnas = ['wo', 'linea_por_centro', 'horas']
+    df = df[columnas].where(pd.notnull(df[columnas]), None)
+    valores = [tuple(row) for row in df.itertuples(index=False)]
+    sql = """
+        INSERT INTO horas (wo, linea_por_centro, horas)
+        VALUES %s
+        ON CONFLICT (wo) DO UPDATE SET
+            linea_por_centro = EXCLUDED.linea_por_centro,
+            horas = EXCLUDED.horas
+    """
+    execute_values(cur, sql, valores)
+    return cur.rowcount
+
 def main():
     if len(sys.argv) < 3:
         print("ERROR: Uso: python importar.py <tabla> <ruta_excel>")
@@ -100,6 +115,8 @@ def main():
             n = importar_stocks(df, cur)
         elif tabla == 'palets':
             n = importar_palets(df, cur)
+        elif tabla == 'horas':
+            n = importar_horas(df, cur)
         else:
             print(f"ERROR: Tabla desconocida: {tabla}")
             sys.exit(1)

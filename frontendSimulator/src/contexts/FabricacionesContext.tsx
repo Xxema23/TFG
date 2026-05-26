@@ -206,11 +206,26 @@ export const FabricacionesProvider: React.FC<{ children: ReactNode }> = ({ child
       const sortedFabs = sortFabrications(mergedFabs);
 
       if (fromCapacity) {
-        const mergedOriginal = prev.originalFabricaciones.map(fab => updatedWOsMap.get(fab.NumWO) || fab);
+        const newPendingChanges = new Map<string, PendingChange>();
+        reorderedOrders.forEach(currentWO => {
+          const originalWO = prev.originalFabricaciones.find(o => o.NumWO === currentWO.NumWO);
+          if (!originalWO) return;
+          const changes = detectChanges(originalWO, currentWO);
+          if (changes) {
+            newPendingChanges.set(currentWO.NumWO, {
+              NumWO: currentWO.NumWO,
+              changes,
+              timestamp: new Date()
+            });
+          }
+        });
+
         return {
           ...prev,
           fabricaciones: sortedFabs,
-          originalFabricaciones: sortFabrications(mergedOriginal),
+          // ← originalFabricaciones NO se toca, para que detectChanges funcione
+          pendingChanges: newPendingChanges,
+          hasPendingChanges: newPendingChanges.size > 0,
           lastUpdated: new Date(),
         };
       }

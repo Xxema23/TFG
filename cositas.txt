@@ -2,3 +2,20 @@ piso-->
 php artisan serve --host=192.168.18.4
 cada-->
 php artisan serve --host=192.168.105.169
+
+vale, y si lo dejamos para el final y continuamos primero con el siguiente punto??
+
+
+
+
+a ver, necesito que me hagas un resumen lo mas completo posible porque tengo que redactar un manual de usuario y un manual de codigos a parte y no tengo muy claro como enfocarlos, asi que si necesitas algo, pideme lo que necesites, pero, todo lo más completo posible, de verdad, lo quiero todo muy muy claro, muy muy bien explicado y lo más completo posible, con todo absolutamente todo lo que sepas, tanto de mi proyecto como de mi codigo y de verdad, de todo
+
+perfectos, antes de acabarlo, si te digo que tengo que hacer en un pdf nuevo que tambien me gustaría hacerlo con latex dos manuales como estos de mi compañero, los hacemos primero?? que necesitas saber?? como podemos hacerlo
+
+
+
+
+esto no esta bien en el punto 7.1
+RINF02– Componentes: El sistema debe almacenar los componentes necesarios
+para fabricar cada orden de trabajo, incluyendo el código y descripción del artículo,
+la cantidad requerida, la fecha de necesidad y el estado de suministro

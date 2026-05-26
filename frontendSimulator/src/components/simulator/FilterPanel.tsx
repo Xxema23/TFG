@@ -24,6 +24,8 @@ export type FilterValues = {
   sigCode: string[];
   palets: string[];
   fchObjetivo: string | null;
+  fchDesde: string | null;
+  fchHasta: string | null;
 };
 
 type FilterOptions = {
@@ -56,7 +58,9 @@ const createSafeFilterValues = (filterValues: Partial<FilterValues>): FilterValu
     estadoWO: Array.isArray(filterValues.estadoWO) ? filterValues.estadoWO : [],
     sigCode: Array.isArray(filterValues.sigCode) ? filterValues.sigCode : [],
     palets: Array.isArray(filterValues.palets) ? filterValues.palets : [],
-    fchObjetivo: filterValues.fchObjetivo || null
+    fchObjetivo: filterValues.fchObjetivo || null,
+    fchDesde: filterValues.fchDesde || null,
+    fchHasta: filterValues.fchHasta || null
   };
 };
 
@@ -288,6 +292,37 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
       );
     }
 
+    if (activeTab === 'fchRango') {
+      return (
+        <div className="p-3 h-full flex flex-col gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Desde</label>
+            <input
+              type="date"
+              className="w-full px-2 py-1 border rounded text-sm"
+              value={filterValues.fchDesde || ''}
+              onChange={(e) => onFilterChange({
+                ...createSafeFilterValues(filterValues),
+                fchDesde: e.target.value || null
+              })}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Hasta</label>
+            <input
+              type="date"
+              className="w-full px-2 py-1 border rounded text-sm"
+              value={filterValues.fchHasta || ''}
+              onChange={(e) => onFilterChange({
+                ...createSafeFilterValues(filterValues),
+                fchHasta: e.target.value || null
+              })}
+            />
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="p-3 h-full flex flex-col">
         <div className="mb-2 flex justify-between items-center flex-shrink-0">
@@ -346,13 +381,16 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     { key: 'estadoWO', label: 'Estado' },
     { key: 'sigCode', label: 'Sig Code' },
     { key: 'palets', label: 'Palets' },
-    { key: 'fchObjetivo', label: 'Fecha' }
+    { key: 'fchObjetivo', label: 'Fecha exacta' },
+    { key: 'fchRango', label: 'Rango' }
   ];
 
   const appliedFiltersCount = useMemo(() => {
     return Object.entries(filterValues).reduce((count, [key, values]) => {
       if (Array.isArray(values) && values.length > 0) return count + 1;
       if (key === 'fchObjetivo' && values) return count + 1;
+      if (key === 'fchDesde' && values) return count + 1;
+      if (key === 'fchHasta' && values) return count + 1;
       return count;
     }, 0);
   }, [filterValues]);
@@ -387,11 +425,11 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
           {filterTabs.map(tab => {
             const isActive = activeTab === tab.key;
             const hasValues = (Array.isArray(filterValues[tab.key as keyof FilterValues]) && 
-                              (filterValues[tab.key as keyof FilterValues] as string[]).length > 0) || 
-                             (tab.key === 'fchObjetivo' && filterValues.fchObjetivo);
+                  (filterValues[tab.key as keyof FilterValues] as string[]).length > 0) || 
+                 (tab.key === 'fchObjetivo' && filterValues.fchObjetivo);
             const count = tab.key === 'fchObjetivo' ? 
-                         (filterValues.fchObjetivo ? 1 : 0) : 
-                         (filterValues[tab.key as keyof FilterValues] as string[])?.length || 0;
+                  (filterValues.fchObjetivo ? 1 : 0) : 
+                  (filterValues[tab.key as keyof FilterValues] as string[])?.length || 0;
             
             return (
               <button
@@ -417,7 +455,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         </div>
       </div>
 
-      {activeTab !== 'fchObjetivo' && (
+      {activeTab !== 'fchObjetivo' && activeTab !== 'fchRango' && (
         <div className="p-3 border-b flex-shrink-0">
           <div className="relative">
             <input

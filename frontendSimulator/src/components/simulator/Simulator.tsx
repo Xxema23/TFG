@@ -32,6 +32,16 @@ const filterFabricaciones = (
       filtered = filtered.filter(fab =>
         (fab.Fch_Objetivo?.split('T')[0] || fab.Fch_Objetivo) === filterValues.fchObjetivo
       );
+    
+    if (filterValues.fchDesde || filterValues.fchHasta) {
+      filtered = filtered.filter(fab => {
+        const fecha = fab.Fch_Objetivo?.split('T')[0] || fab.Fch_Objetivo;
+        if (!fecha) return false;
+        if (filterValues.fchDesde && fecha < filterValues.fchDesde) return false;
+        if (filterValues.fchHasta && fecha > filterValues.fchHasta) return false;
+        return true;
+      });
+    }
 
     if (filterValues.numWO?.length > 0)
       filtered = filtered.filter(fab => filterValues.numWO.includes(fab.NumWO));
@@ -203,13 +213,15 @@ const Simulator: React.FC = () => {
   }, []);
 
   const [filterValues, setFilterValues] = useState<FilterValues>({
-      linea: [getStoredLine()],
-      numWO: [],
-      equipo: [],
-      estadoWO: [],
-      sigCode: [],
-      palets: [],
-      fchObjetivo: null
+    linea: [getStoredLine()],
+    numWO: [],
+    equipo: [],
+    estadoWO: [],
+    sigCode: [],
+    palets: [],
+    fchObjetivo: null,
+    fchDesde: null, 
+    fchHasta: null  
   });
 
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -316,13 +328,15 @@ const Simulator: React.FC = () => {
 
   const clearAllFilters = useCallback(() => {
     setFilterValues({
-        linea: [defaultLineFilter || DEFAULT_LINE],
-        numWO: [],
-        equipo: [],
-        estadoWO: [],
-        sigCode: [],
-        palets: [],
-        fchObjetivo: null
+      linea: [defaultLineFilter || DEFAULT_LINE],
+      numWO: [],
+      equipo: [],
+      estadoWO: [],
+      sigCode: [],
+      palets: [],
+      fchObjetivo: null,
+      fchDesde: null, 
+      fchHasta: null  
     });
   }, [defaultLineFilter]);
 

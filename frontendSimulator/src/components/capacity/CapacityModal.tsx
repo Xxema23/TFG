@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useUniqueLines } from '../../hooks/UseUniqueLines';
 import { CapacityData } from '../../interfaces/Capacity';
-import { getCapacities } from '../../services/capacityService';
+import { getCapacities, getBaseCapacities } from '../../services/capacityService';
+
 
 interface CapacityModalProps {
   isOpen?: boolean;
@@ -87,17 +88,24 @@ const CapacityModal: React.FC<CapacityModalProps> = ({
   
   const [capacityValues, setCapacityValues] = useState<Record<string, Record<number, number>>>({});
   const [originalCapacities, setOriginalCapacities] = useState<Record<string, Record<number, number>>>({});
+  const [baseCapacities, setBaseCapacities] = useState<Record<string, number>>({});
 
   const loadExistingCapacities = useCallback(async () => {
     if (!scenarioId || !isOpen) return;
 
     setIsLoadingCapacities(true);
     try {
-      
-      const existingCapacities = await getCapacities(scenarioId, selectedYear);
+      // Cargar capacidades base
+      const baseData = await getBaseCapacities(scenarioId);
+      const baseMap: Record<string, number> = {};
+      baseData.forEach(cap => {
+        baseMap[cap.line] = cap.daily_capacity;
+      });
+      setBaseCapacities(baseMap);
 
+      // Cargar capacidades semanales personalizadas
+      const existingCapacities = await getCapacities(scenarioId, selectedYear);
       const newCapacityValues: Record<string, Record<number, number>> = {};
-      
       existingCapacities.forEach(capacity => {
         if (!newCapacityValues[capacity.line]) {
           newCapacityValues[capacity.line] = {};
@@ -107,7 +115,7 @@ const CapacityModal: React.FC<CapacityModalProps> = ({
 
       setCapacityValues(newCapacityValues);
       setOriginalCapacities(JSON.parse(JSON.stringify(newCapacityValues)));
-      
+
     } catch (error) {
       console.error("Error al cargar capacidades existentes:", error);
     } finally {
@@ -510,17 +518,18 @@ const CapacityModal: React.FC<CapacityModalProps> = ({
                         const cellId = `${line}-${week}`;
                         const isSelected = selectedCells.has(cellId);
                         const isEditing = editingCell === cellId || (editingCell && selectedCells.has(cellId));
-                        const value = capacityValues[line]?.[week] || DEFAULT_CAPACITY;
+                        const value = capacityValues[line]?.[week] ?? baseCapacities[line] ?? DEFAULT_CAPACITY;
                         const originalValue = originalCapacities[line]?.[week];
-                        const hasCustomValue = value > 0;
-                        const wasModified = originalValue !== value;
+                        const hasCustomValue = capacityValues[line]?.[week] !== undefined && capacityValues[line][week] > 0;
+                        const isDefaultValue = capacityValues[line]?.[week] === undefined && baseCapacities[line] !== undefined;
+                        const wasModified = originalValue !== undefined && originalValue !== value;
                         
                         return (
                           <td 
                             key={cellId}
                             className={`border border-gray-300 p-1 text-center cursor-pointer ${
                               isSelected ? 'bg-blue-100 border-blue-400' : ''
-                            } ${hasCustomValue ? 'bg-green-50' : wasModified ? 'bg-orange-50' : ''}`}
+                            } ${hasCustomValue ? 'bg-green-50' : isDefaultValue ? 'bg-orange-50' : wasModified ? 'bg-red-50' : ''}`}
                             onClick={(e) => handleCellClick(line, week, e)}
                             onDoubleClick={isSelected ? handleDoubleClick : undefined}
                           >
@@ -540,11 +549,12 @@ const CapacityModal: React.FC<CapacityModalProps> = ({
                             ) : (
                               <span className={`block w-full h-full ${
                                 hasCustomValue ? 'font-medium text-green-700' : 
-                                wasModified ? 'font-medium text-orange-700' : 'text-gray-400'
+                                isDefaultValue ? 'font-medium text-orange-600' :
+                                wasModified ? 'font-medium text-red-600' : 'text-gray-400'
                               }`}>
                                 {value}
-                                {hasCustomValue && (
-                                  <div className="text-xs text-green-600">h/día</div>
+                                {(hasCustomValue || isDefaultValue) && (
+                                  <div className={`text-xs ${hasCustomValue ? 'text-green-600' : 'text-orange-500'}`}>h/día</div>
                                 )}
                               </span>
                             )}

@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import api from '../../api';
 
-type Tabla = 'vision_fabricacion' | 'ctb' | 'palets' | 'stocks';
+type Tabla = 'vision_fabricacion' | 'ctb' | 'palets' | 'stocks' | 'horas';
 
 interface ImportExcelModalProps {
   isOpen: boolean;
@@ -32,6 +32,12 @@ const TABLAS: { key: Tabla; label: string; descripcion: string; columnas: string
     label: 'Palets',
     descripcion: 'Información de palets',
     columnas: ['num_orden', 'num_de_palet', 'palet_2nd_number']
+  },
+  {
+    key: 'horas',
+    label: 'Horas',
+    descripcion: 'Horas de fabricación por WO',
+    columnas: ['wo', 'linea_por_centro', 'horas']
   }
 ];
 
@@ -107,7 +113,7 @@ const ImportExcelModal: React.FC<ImportExcelModalProps> = ({ isOpen, onClose }) 
           {/* Selector de tabla */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Tabla de destino</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-2 grid-rows-2">
               {TABLAS.map(t => (
                 <button
                   key={t.key}

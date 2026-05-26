@@ -309,31 +309,41 @@ const GanttWOs: React.FC<GanttWOsProps> = ({
         {ControlButtons}
       </div>
 
-      <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 200px)" }}>
-        <div className="min-w-max">
-          <div className="flex border-b border-gray-200 bg-gray-50">
-            <div className="w-32 p-3 border-r border-gray-200 bg-white font-medium text-gray-700 flex items-center justify-center">
-              Líneas
+      <div className="flex" style={{ maxHeight: "calc(100vh - 200px)" }}>
+        {/* Columna fija izquierda */}
+        <div className="flex-none w-32 z-10 shadow-md">
+          <div className="p-3 border-r border-b border-gray-200 bg-white font-medium text-gray-700 flex items-center justify-center h-[49px]">
+            Líneas
+          </div>
+          {uniqueLines.map((line) => (
+            <div key={line} className="border-r border-b border-gray-200 bg-white font-medium text-gray-700 flex items-center justify-end pr-4 p-3" style={{ minHeight: "60px" }}>
+              {line}
             </div>
-            <div className="flex">
+          ))}
+        </div>
+
+        {/* Área scrollable */}
+        <div className="overflow-auto flex-1">
+          <div className="min-w-max">
+            <div className="flex border-b border-gray-200 bg-gray-50">
               {workingDays.map((day) => (
                 <DayHeader key={day} day={day} zoomLevel={zoomLevel} />
               ))}
             </div>
+            {uniqueLines.map((line) => (
+              <div key={line} className="flex border-b border-gray-100 hover:bg-gray-50" style={{ minHeight: "60px" }}>
+                <GanttDayScroller
+                  days={workingDays}
+                  line={line}
+                  workOrders={lineWorkOrders[line]}
+                  capacity={capacity}
+                  zoomLevel={zoomLevel}
+                  selectedWOs={selectedWOs}
+                  setSelectedWOs={setSelectedWOs}
+                />
+              </div>
+            ))}
           </div>
-
-          {uniqueLines.map((line) => (
-            <GanttLine
-              key={line}
-              line={line}
-              workOrders={lineWorkOrders[line]}
-              workingDays={workingDays}
-              capacity={capacity}
-              zoomLevel={zoomLevel}
-              selectedWOs={selectedWOs}
-              setSelectedWOs={setSelectedWOs}
-            />
-          ))}
         </div>
       </div>
     </div>

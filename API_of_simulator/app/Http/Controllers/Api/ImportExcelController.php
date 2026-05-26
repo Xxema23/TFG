@@ -11,7 +11,7 @@ class ImportExcelController extends Controller
     {
         try {
             $request->validate([
-                'tabla' => 'required|in:vision_fabricacion,ctb,palets,stocks',
+                'tabla' => 'required|in:vision_fabricacion,ctb,palets,stocks,horas',
                 'archivo' => 'required|file|mimes:xlsx,xls'
             ]);
 
