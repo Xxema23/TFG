@@ -9,9 +9,9 @@ type ScenarioTabsProps = {
 };
 
 const ALL_SCENARIOS = [
-  { id: 1, name: 'Escenario 1-1.5 a 3T' },
-  { id: 2, name: 'Escenario 2-1.3 a 2T' },
-  { id: 3, name: 'Escenario 3-3T' },
+  { id: 1, name: 'Escenario 1' },
+  { id: 2, name: 'Escenario 2' },
+  { id: 3, name: 'Escenario 3' },
 ];
 
 const ScenarioTabs: React.FC<ScenarioTabsProps> = ({

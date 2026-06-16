@@ -6,10 +6,10 @@ import GanttWOs from '../ganttWOs/GanttWOs';
 import FilterPanel, { FilterValues } from './FilterPanel';
 import ResizableVerticalPanel from './ResizableVerticalPanel';
 import DetailTablesPanel from './DetailTablesPanel/index';
+import api from '../../api';
 
 import { IFabricacionConHoras } from '../../interfaces/IFabricacionConHoras';
 import { UseSimulatorData } from './DetailTablesPanel/hooks/useSimulatorData';
-import axios from '../../api';
 import { IPalet } from '../../interfaces/ISimulatorData';
 
 const DEBUG_MODE = false;
@@ -229,7 +229,7 @@ const Simulator: React.FC = () => {
   const [paletsMap, setPaletsMap] = useState<Map<string, IPalet>>(new Map());
 
     useEffect(() => {
-      axios.get('http://192.168.18.4:8000/api/palets')
+      api.get('/palets')
         .then(r => {
           const map = new Map<string, IPalet>();
           r.data.forEach((p: IPalet) => {

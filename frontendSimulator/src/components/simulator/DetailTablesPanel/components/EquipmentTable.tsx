@@ -124,7 +124,6 @@ const EquipmentRow = memo<{
         isSelected ? 'bg-blue-100 border-blue-300' : '',
         isHovered && !isSelected ? 'bg-gray-50' : '',
         isDragging ? 'opacity-50' : '',
-        isOver && canDrop ? 'border-t-4 border-blue-500' : '',
         isUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-grab active:cursor-grabbing',
         'transition-colors duration-100 border-b'  // ✅ duration-100 más rápido que 150
       ].filter(Boolean).join(' ')}
@@ -133,7 +132,10 @@ const EquipmentRow = memo<{
       onMouseLeave={handleMouseLeave}
       data-wo-id={woId}
       data-num-wo={wo.numWO}
-      style={{ pointerEvents: isUpdating ? 'none' : 'auto' }}
+      style={{ 
+        pointerEvents: isUpdating ? 'none' : 'auto',
+        boxShadow: isOver && canDrop ? 'inset 0 3px 0 0 #3b82f6' : undefined
+      }}
     >
       <td className="px-2 py-1 border-b text-xs whitespace-nowrap font-medium">
         {formatNumericField(wo.numWO)}
